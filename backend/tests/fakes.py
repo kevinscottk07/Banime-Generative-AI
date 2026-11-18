@@ -15,7 +15,9 @@ class FakeDynamo:
     def _k(self, key):
         return key["pk"]["S"], key["sk"]["S"]
 
-    def put_item(self, TableName, Item):
+    def put_item(self, TableName, Item, ConditionExpression=None):
+        if ConditionExpression and (Item["pk"]["S"], Item["sk"]["S"]) in self.items:
+            raise ConditionalCheckFailedException("ConditionalCheckFailed")
         self.items[(Item["pk"]["S"], Item["sk"]["S"])] = json.loads(json.dumps(Item))
 
     def get_item(self, TableName, Key, ConsistentRead=False):
@@ -25,16 +27,22 @@ class FakeDynamo:
     def delete_item(self, TableName, Key):
         self.items.pop(self._k(Key), None)
 
-    def query(self, TableName, KeyConditionExpression, ExpressionAttributeValues, ScanIndexForward=True, Limit=100):
-        pk, pre = ExpressionAttributeValues[":pk"]["S"], ExpressionAttributeValues[":sk"]["S"]
+    def query(self, TableName, KeyConditionExpression, ExpressionAttributeValues, ScanIndexForward=True, Limit=100, **_):
+        pk = ExpressionAttributeValues[":pk"]["S"]
+        pre = ExpressionAttributeValues[":sk"]["S"] if ":sk" in ExpressionAttributeValues else ""
         rows = sorted((k, v) for k, v in self.items.items() if k[0] == pk and k[1].startswith(pre))
         if not ScanIndexForward:
             rows.reverse()
         return {"Items": [v for _, v in rows[:Limit]]}
 
     def update_item(self, TableName, Key, UpdateExpression, ExpressionAttributeValues,
-                    ConditionExpression=None, ReturnValues=None):
+                    ConditionExpression=None, ReturnValues=None, ExpressionAttributeNames=None):
         k = self._k(Key)
+        if ExpressionAttributeNames:  # generic counter: ADD #c :n
+            it = self.items.setdefault(k, {"pk": Key["pk"], "sk": Key["sk"]})
+            name = ExpressionAttributeNames["#c"]
+            it[name] = {"N": str(int(it.get(name, {"N": "0"})["N"]) + int(ExpressionAttributeValues[":n"]["N"]))}
+            return {}
         it = self.items.setdefault(k, {"pk": Key["pk"], "sk": Key["sk"]})
         attr = "credits" if "credits" in UpdateExpression else "usd"
         cur = float(it[attr]["N"]) if attr in it else None

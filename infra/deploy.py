@@ -13,7 +13,6 @@ import argparse
 import hashlib
 import io
 import json
-import mimetypes
 import os
 import sys
 import time
@@ -40,25 +39,6 @@ def build_zip() -> bytes:
     return buf.getvalue()
 
 
-def pick_director_model(bedrock, runtime) -> str:
-    """Newest US cross-region Claude inference profile this account can actually call
-    (Sonnet preferred, then Haiku, then Opus). Each candidate is probed with a 1-token call,
-    because a listed profile is not necessarily enabled for the account."""
-    profiles = bedrock.list_inference_profiles(typeEquals="SYSTEM_DEFINED", maxResults=1000)["inferenceProfileSummaries"]
-    ids = sorted((p["inferenceProfileId"] for p in profiles
-                  if p["inferenceProfileId"].startswith("us.anthropic.claude") and p.get("status") == "ACTIVE"), reverse=True)
-    for family in ("sonnet", "haiku", "opus"):
-        for i in (x for x in ids if family in x):
-            try:
-                runtime.converse(modelId=i, messages=[{"role": "user", "content": [{"text": "ok"}]}],
-                                 inferenceConfig={"maxTokens": 1})
-                return i
-            except ClientError:
-                continue
-    raise SystemExit("No callable Claude model in us-west-2. In the Bedrock console, submit the Anthropic "
-                     "use-case form and enable a Claude model, then re-run.")
-
-
 def stack_outputs(cfn, name):
     s = cfn.describe_stacks(StackName=name)["Stacks"][0]
     return s["StackStatus"], {o["OutputKey"]: o["OutputValue"] for o in s.get("Outputs", [])}
@@ -78,16 +58,17 @@ def main():
     ap.add_argument("--stack", default="banime")
     ap.add_argument("--admin-email", default="")
     ap.add_argument("--budget-email", default="")
-    ap.add_argument("--render-policy", default="admins", choices=["admins", "all"])
-    ap.add_argument("--monthly-render-cap", default="50")
-    ap.add_argument("--director-model", default="")
+    ap.add_argument("--animate-policy", default="admins", choices=["admins", "all"])
+    ap.add_argument("--monthly-video-cap", default="40")
+    ap.add_argument("--google-client-id", default="")
+    ap.add_argument("--google-client-secret", default="")
     ap.add_argument("--destroy", action="store_true")
     a = ap.parse_args()
 
     sess = boto3.Session(region_name=REGION)
     cfn, s3 = sess.client("cloudformation"), sess.client("s3")
     account = sess.client("sts").get_caller_identity()["Account"]
-    artifacts = f"{a.stack}-artifacts-{account}-{REGION}"
+    artifacts = f"kyverin-studio-artifacts-{account}-{REGION}"
 
     if a.destroy:
         _, out = stack_outputs(cfn, a.stack)
@@ -109,16 +90,14 @@ def main():
         s3.put_public_access_block(Bucket=artifacts, PublicAccessBlockConfiguration={
             "BlockPublicAcls": True, "IgnorePublicAcls": True, "BlockPublicPolicy": True, "RestrictPublicBuckets": True})
     code = build_zip()
-    key = f"lambda/studio-{hashlib.sha256(code).hexdigest()[:16]}.zip"
+    key = f"bn/lambda/banime-{hashlib.sha256(code).hexdigest()[:16]}.zip"
     s3.put_object(Bucket=artifacts, Key=key, Body=code)
     print(f"Uploaded {key} ({len(code)} bytes)")
 
     # 2. stack
-    model = a.director_model or pick_director_model(sess.client("bedrock"), sess.client("bedrock-runtime"))
-    print("Director model:", model)
-    params = {"CodeBucket": artifacts, "CodeKey": key, "DirectorModelId": model, "AdminEmails": a.admin_email,
-              "RenderPolicy": a.render_policy, "BudgetAlertEmail": a.budget_email,
-              "MonthlyRenderCapUsd": a.monthly_render_cap}
+    params = {"CodeBucket": artifacts, "CodeKey": key, "AdminEmails": a.admin_email, "AnimatePolicy": a.animate_policy,
+              "BudgetAlertEmail": a.budget_email, "MonthlyVideoCapUsd": a.monthly_video_cap,
+              "GoogleClientId": a.google_client_id, "GoogleClientSecret": a.google_client_secret}
     kwargs = dict(StackName=a.stack, TemplateBody=open(os.path.join(ROOT, "infra", "template.yaml")).read(),
                   Parameters=[{"ParameterKey": k, "ParameterValue": v} for k, v in params.items()],
                   Capabilities=["CAPABILITY_IAM"], Tags=[{"Key": "app", "Value": "banime"}])
@@ -137,14 +116,13 @@ def main():
     if status not in ("CREATE_COMPLETE", "UPDATE_COMPLETE"):
         sys.exit(f"Stack ended in {status}. See the CloudFormation console events.")
 
-    # 3. frontend
-    cfg = {"apiUrl": out["ApiUrl"], "region": REGION, "userPoolClientId": out["UserPoolClientId"]}
-    files = {"config.js": f"window.KYVERIN_CONFIG = {json.dumps(cfg)};\n".encode()}
-    for name in ("index.html", "styles.css", "app.js", "demo.js"):
-        files[name] = open(os.path.join(ROOT, "frontend", name), "rb").read()
-    for name, body in files.items():
-        ctype = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        s3.put_object(Bucket=out["SiteBucket"], Key=name, Body=body, ContentType=f"{ctype}; charset=utf-8")
+    # 3. frontend: the Lambda package carries the site; it writes config.js from these outputs.
+    cfg = {"apiUrl": out["ApiUrl"], "userPoolClientId": out["UserPoolClientId"], "authDomain": out["AuthDomain"],
+           "google": out.get("GoogleEnabled") == "true"}
+    sess.client("lambda").invoke(FunctionName=f"{a.stack}-api", Payload=json.dumps({"action": "publish_site", "payload": cfg}))
+    sess.client("cloudfront").create_invalidation(DistributionId=cfn.describe_stack_resource(
+        StackName=a.stack, LogicalResourceId="SiteDistribution")["StackResourceDetail"]["PhysicalResourceId"],
+        InvalidationBatch={"Paths": {"Quantity": 1, "Items": ["/*"]}, "CallerReference": str(time.time())})
     print("\nBanime is live:", out["SiteUrl"])
     print("API:", out["ApiUrl"])
 

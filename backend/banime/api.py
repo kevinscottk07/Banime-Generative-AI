@@ -8,7 +8,7 @@ import re
 import time
 import traceback
 
-from . import ai, common
+from . import ai, common, portal
 from .common import HttpError
 
 CREDIT_USD = 0.10
@@ -28,7 +28,8 @@ def identity(event: dict) -> dict:
     email = (claims.get("email") or "").lower()
     admins = {e.strip().lower() for e in common.env("ADMIN_EMAILS").split(",") if e.strip()}
     return {"userId": claims["sub"], "email": email, "name": claims.get("name") or email.split("@")[0],
-            "isAdmin": bool(email) and email in admins}
+            "isAdmin": bool(email) and email in admins,
+            "username": claims.get("cognito:username") or claims.get("username") or claims["sub"]}
 
 
 def can_animate(who: dict) -> bool:
@@ -116,7 +117,10 @@ def health(_w, _b, _p):
 
 
 def me(who, _b, _p):
-    return 200, {"userId": who["userId"], "email": who["email"], "name": who["name"], "isAdmin": who["isAdmin"],
+    prof = portal.get_profile(who)
+    return 200, {"userId": who["userId"], "email": who["email"], "name": prof.get("name") or who["name"],
+                 "isAdmin": who["isAdmin"], "prefs": prof.get("prefs", {}), "created": prof.get("created"),
+                 "packs": portal.PACKS, "billingEnabled": portal.billing_enabled(),
                  "credits": common.get_credits(who["userId"]), "canAnimate": can_animate(who),
                  "costs": COST, "creditUsd": CREDIT_USD,
                  "styles": {k: v[0] for k, v in ai.STYLES.items()}}
@@ -165,12 +169,23 @@ def generate(who, body, _p):
     it = save_image(who, data, {"prompt": body.get("prompt", "")[:3000], "style": style, "aspect": aspect,
                                 "mode": mode, "model": model if mode == "text" else ai.SERVICES[mode].split(".")[2],
                                 "characterId": char["id"] if char else None, "title": body.get("title", "")[:60],
-                                "seed": seed, "credits": cost})
+                                "seed": seed, "credits": cost,
+                                "projectId": _project_or_none(who, body.get("projectId"))})
+    common.bump("images")
     return 200, {"item": view(it), "credits": common.get_credits(who["userId"])}
 
 
+def _project_or_none(who, pid):
+    if not pid:
+        return None
+    try:
+        return portal.load_project(who, pid)["id"]
+    except HttpError:
+        return None
+
+
 def gallery(who, _b, _p):
-    items = common.query_prefix(f"USER#{who['userId']}", "ITEM#", limit=120)
+    items = common.query_prefix(f"USER#{who['userId']}", "ITEM#", limit=300)
     return 200, {"items": [view(i) for i in items]}
 
 
@@ -194,6 +209,7 @@ def delete_item(who, _b, p):
     it = load_item(who, p["id"])
     if it.get("key"):  # a video's poster belongs to its source image, so only the item's own file goes
         common.client("s3").delete_object(Bucket=common.bucket(), Key=it["key"])
+    portal.unshare_on_delete(it)
     common.delete_item(*item_key(who, it["id"]))
     return 200, {"deleted": it["id"]}
 
@@ -215,8 +231,10 @@ def tool(who, body, p):
         refund(who, cost, name, src["id"])
         raise
     it = save_image(who, data, {"prompt": src.get("prompt", ""), "style": src.get("style"), "aspect": src.get("aspect"),
-                                "mode": name, "parentId": src["id"], "title": src.get("title", ""), "credits": cost},
+                                "mode": name, "parentId": src["id"], "title": src.get("title", ""), "credits": cost,
+                                "projectId": src.get("projectId")},
                     ext="png" if name == "removebg" else "jpg")
+    common.bump(name)
     return 200, {"item": view(it), "credits": common.get_credits(who["userId"])}
 
 
@@ -252,8 +270,9 @@ def animate(who, body, _p):
         raise
     it = {"id": iid, "kind": "video", "status": "rendering", "arn": arn, "posterKey": src["key"], "parentId": src["id"],
           "prompt": motion, "aspect": src.get("aspect"), "title": src.get("title", ""), "created": common.now(),
-          "credits": cost}
+          "credits": cost, "projectId": src.get("projectId")}
     common.put_item(*item_key(who, iid), it)
+    common.bump("clips")
     return 202, {"item": view(it), "credits": common.get_credits(who["userId"])}
 
 
@@ -336,7 +355,7 @@ ROUTES = [
     ("POST", r"/characters", create_char, True),
     ("DELETE", r"/characters/(?P<id>[^/]+)", delete_char, True),
     ("POST", r"/admin/grant", admin_grant, True),
-]
+] + portal.ROUTES
 
 
 def route(method, path):
@@ -354,6 +373,11 @@ def handler(event, _ctx=None):
             return publish.publish_site(event["payload"])
         method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
         path = event.get("rawPath", "/").rstrip("/") or "/"
+        if method == "POST" and path == "/public/stripe-webhook":
+            raw = event.get("body") or ""
+            if event.get("isBase64Encoded"):
+                raw = base64.b64decode(raw).decode()
+            return common.response(*portal.stripe_webhook(raw, (event.get("headers") or {}).get("stripe-signature", "")))
         fn, params, auth = route(method, path)
         who = identity(event) if auth else None
         if who:

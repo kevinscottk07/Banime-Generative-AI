@@ -79,6 +79,49 @@ def delete_item(pk: str, sk: str) -> None:
     client("dynamodb").delete_item(TableName=table(), Key={"pk": {"S": pk}, "sk": {"S": sk}})
 
 
+def query_all(pk: str) -> list[tuple[str, dict]]:
+    """Every (sk, doc) under a partition key, following pagination."""
+    out, start = [], None
+    while True:
+        kw = dict(TableName=table(), KeyConditionExpression="pk = :pk", ExpressionAttributeValues={":pk": {"S": pk}})
+        if start:
+            kw["ExclusiveStartKey"] = start
+        r = client("dynamodb").query(**kw)
+        out += [(i["sk"]["S"], json.loads(i["doc"]["S"]) if "doc" in i else {}) for i in r.get("Items", [])]
+        start = r.get("LastEvaluatedKey")
+        if not start:
+            return out
+
+
+def put_new(pk: str, sk: str, doc: dict) -> bool:
+    """Put only if the key is new. Returns False when it already existed (idempotency)."""
+    try:
+        client("dynamodb").put_item(TableName=table(), Item={
+            "pk": {"S": pk}, "sk": {"S": sk}, "doc": {"S": json.dumps(doc, separators=(",", ":"))},
+            "updated": {"N": str(now())}}, ConditionExpression="attribute_not_exists(pk)")
+        return True
+    except Exception as e:  # noqa: BLE001
+        if "ConditionalCheckFailed" in type(e).__name__ or "ConditionalCheckFailed" in str(e):
+            return False
+        raise
+
+
+def bump(counter: str, n: int = 1) -> None:
+    """Monthly usage counters for the admin view. Never breaks the caller."""
+    try:
+        client("dynamodb").update_item(
+            TableName=table(), Key={"pk": {"S": "CONFIG"}, "sk": {"S": "STATS#" + time.strftime("%Y%m", time.gmtime())}},
+            UpdateExpression="ADD #c :n", ExpressionAttributeNames={"#c": counter},
+            ExpressionAttributeValues={":n": {"N": str(n)}})
+    except Exception as e:  # noqa: BLE001
+        print(json.dumps({"level": "warn", "stat": counter, "error": repr(e)}))
+
+
+def get_raw(pk: str, sk: str) -> dict | None:
+    r = client("dynamodb").get_item(TableName=table(), Key={"pk": {"S": pk}, "sk": {"S": sk}}, ConsistentRead=True)
+    return r.get("Item")
+
+
 def query_prefix(pk: str, sk_prefix: str, limit: int = 100, newest_first: bool = True) -> list[dict]:
     r = client("dynamodb").query(
         TableName=table(),

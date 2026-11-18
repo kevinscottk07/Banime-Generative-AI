@@ -21,7 +21,7 @@ Parameters:
 
 Conditions:
   HasGoogle: !Not [!Equals [!Ref GoogleClientId, ""]]
-  HasBudget: !Not [!Equals [!Ref BudgetAlertEmail, ""]]
+  HasBudget: !Not [!Equals [!Ref BudgetAlertEmail, ""]]  # also turns on the API error alarm
   DefaultPrefix: !Equals [!Ref AuthDomainPrefix, ""]
 
 Resources:
@@ -71,6 +71,13 @@ Resources:
           Compress: true
           CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
           ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+        CacheBehaviors:
+          - PathPattern: art/*
+            TargetOriginId: site
+            ViewerProtocolPolicy: redirect-to-https
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6          # Managed-CachingOptimized
+            ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
         CustomErrorResponses: [{ ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html }]
 
   SiteBucketPolicy:
@@ -153,6 +160,16 @@ Resources:
       ClientId: !Ref UserPoolClient
       UseCognitoProvidedValues: true
 
+  # ------------------------------------------------------------------ payments: Stripe keys live here, never in code.
+  # Fill in the console: {"secretKey": "sk_live_...", "webhookSecret": "whsec_..."}. Empty = payments off.
+  StripeSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/stripe"
+      Description: Banime Stripe secret key and webhook signing secret
+      SecretString: '{"secretKey":"","webhookSecret":""}'
+      Tags: [{ Key: app, Value: banime }]
+
   # ------------------------------------------------------------------ guardrail
   ContentGuardrail:
     Type: AWS::Bedrock::Guardrail
@@ -206,6 +223,8 @@ Resources:
                   - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
                   - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:async-invoke/*"
               - { Effect: Allow, Action: bedrock:ApplyGuardrail, Resource: !GetAtt ContentGuardrail.GuardrailArn }
+              - { Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: !Ref StripeSecret }
+              - { Sid: AdminViewAndAccountDelete, Effect: Allow, Action: [cognito-idp:ListUsers, cognito-idp:AdminDeleteUser], Resource: !GetAtt UserPool.Arn }
               - { Sid: AutoEnableMarketplaceModels, Effect: Allow, Action: [aws-marketplace:ViewSubscriptions, aws-marketplace:Subscribe], Resource: "*" }
 
   ApiLogs:
@@ -237,6 +256,9 @@ Resources:
           ADMIN_START_CREDITS: !Ref AdminStartCredits
           MONTHLY_VIDEO_CAP_USD: !Ref MonthlyVideoCapUsd
           PROMPT_MODEL_ID: !Ref PromptModelId
+          USER_POOL_ID: !Ref UserPool
+          STRIPE_SECRET_ARN: !Ref StripeSecret
+          SITE_URL: !Sub "https://${SiteDistribution.DomainName}"
 
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
@@ -270,6 +292,10 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /health", AuthorizationType: NONE, Target: !Sub "integrations/${ApiIntegration}" }
 
+  PublicRoute:  # share pages and the Stripe webhook: no sign-in
+    Type: AWS::ApiGatewayV2::Route
+    Properties: { ApiId: !Ref HttpApi, RouteKey: "ANY /public/{proxy+}", AuthorizationType: NONE, Target: !Sub "integrations/${ApiIntegration}" }
+
   ApiStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties: { ApiId: !Ref HttpApi, StageName: $default, AutoDeploy: true, DefaultRouteSettings: { ThrottlingBurstLimit: 30, ThrottlingRateLimit: 15 } }
@@ -286,6 +312,30 @@ Resources:
       NotificationsWithSubscribers:
         - { Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE }, Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref BudgetAlertEmail }] }
 
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasBudget
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-alerts"
+      Subscription: [{ Protocol: email, Endpoint: !Ref BudgetAlertEmail }]
+
+  ApiErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasBudget
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-api-errors"
+      AlarmDescription: Banime API Lambda is failing (5+ errors in 5 minutes)
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref ApiFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
 Outputs:
   SiteUrl: { Value: !Sub "https://${SiteDistribution.DomainName}" }
   ApiUrl: { Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com" }
@@ -296,3 +346,5 @@ Outputs:
   GoogleEnabled: { Value: !If [HasGoogle, "true", "false"] }
   SiteBucket: { Value: !Ref SiteBucket }
   MediaBucket: { Value: !Ref MediaBucket }
+  StripeSecretArn: { Value: !Ref StripeSecret }
+  StripeWebhookUrl: { Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/public/stripe-webhook" }

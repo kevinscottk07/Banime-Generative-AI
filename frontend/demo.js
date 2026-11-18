@@ -8,7 +8,8 @@ function art(prompt, style = "shonen") {
   n++;
   return `${(window.BANIME_CONFIG || {}).artBase || "/art/"}style-${BG[style] ? style : "shonen"}.jpg`;
 }
-const S = { credits: 120, ledger: [], items: [], chars: [] };
+const S = { credits: 120, ledger: [], items: [], chars: [], projects: [], pages: [], name: "Demo", prefs: {} };
+const PACKS = { starter: { name: "Starter", credits: 100, cents: 1500 }, creator: { name: "Creator", credits: 400, cents: 4900 }, studio: { name: "Studio", credits: 1000, cents: 10900 } };
 const now = () => Math.floor(Date.now() / 1000);
 const id = (p) => p + Date.now().toString(16) + Math.random().toString(16).slice(2, 6);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,19 +19,38 @@ const ok = (x) => JSON.parse(JSON.stringify({ ...x, credits: S.credits }));
 
 export async function demoApi(method, path, body = {}) {
   await sleep(300);
-  if (path === "/me") return { userId: "demo", email: "demo@banime.app", name: "Demo", isAdmin: false, canAnimate: true, credits: S.credits, costs: COST, creditUsd: 0.1 };
+  if (path === "/me" && method === "PATCH") { if (body.name) S.name = body.name; Object.assign(S.prefs, body.prefs || {}); return { profile: { name: S.name, prefs: S.prefs } }; }
+  if (path === "/me" && method === "DELETE") { throw new Error("Demo accounts can't be deleted. Sign in to use this."); }
+  if (path === "/me") return { userId: "demo", email: "demo@banime.app", name: S.name, prefs: S.prefs, isAdmin: false, canAnimate: true, credits: S.credits, costs: COST, creditUsd: 0.1, packs: PACKS, billingEnabled: false };
+  if (path === "/me/export") return { demo: true, items: S.items, characters: S.chars, projects: S.projects, pages: S.pages, ledger: S.ledger };
+  if (path === "/billing/checkout") { const e = new Error("Payments open soon."); throw e; }
+  const urlOf = (iid) => S.items.find((i) => i.id === iid)?.url || null;
+  const pview = (g) => ({ ...g, panels: g.panels.map((p) => ({ ...p, url: urlOf(p.itemId) })) });
+  if (path === "/projects" && method === "GET") return { projects: S.projects.map((p) => { const mine = S.items.filter((i) => i.projectId === p.id); return { ...p, itemCount: mine.length, pageCount: S.pages.filter((g) => g.projectId === p.id).length, coverUrl: mine.find((i) => i.kind === "image")?.url || null }; }) };
+  if (path === "/projects" && method === "POST") { if (!body.name?.trim()) throw new Error("Give the project a name."); const p = { id: "p" + Math.random().toString(16).slice(2, 14).padEnd(12, "0"), name: body.name.trim(), description: body.description || "", created: now() }; S.projects.unshift(p); return { project: p }; }
+  if (path.startsWith("/projects/")) {
+    const p = S.projects.find((x) => x.id === path.split("/")[2]); if (!p) throw new Error("Project not found.");
+    if (method === "PATCH") { Object.assign(p, body); return { project: p }; }
+    if (method === "DELETE") { S.projects = S.projects.filter((x) => x !== p); S.items.forEach((i) => { if (i.projectId === p.id) i.projectId = null; }); S.pages.forEach((g) => { if (g.projectId === p.id) g.projectId = null; }); return { deleted: p.id }; }
+    return { project: p, items: S.items.filter((i) => i.projectId === p.id), pages: S.pages.filter((g) => g.projectId === p.id) };
+  }
+  if (path === "/pages" && method === "GET") return { pages: S.pages.map(pview) };
+  if (path === "/pages" && method === "POST") { const g = { ...body, id: "g" + Math.random().toString(16).slice(2, 14).padEnd(12, "0"), created: now() }; S.pages.unshift(g); return { page: pview(g) }; }
+  if (path.startsWith("/pages/")) { const g = S.pages.find((x) => x.id === path.split("/")[2]); if (!g) throw new Error("Page not found."); if (method === "DELETE") { S.pages = S.pages.filter((x) => x !== g); return { deleted: g.id }; } Object.assign(g, body); return { page: pview(g) }; }
   if (path === "/me/ledger") return { entries: S.ledger };
   if (path === "/enhance") { await sleep(700); return { prompt: `${body.prompt.trim()}, standing on a windswept rooftop at golden hour, cherry petals swirling, determined expression, dramatic low angle, city skyline glowing behind`, title: "Rooftop Resolve" }; }
   if (path === "/generate") {
     const k = body.mode === "text" ? `text:${body.model}` : body.mode; spend(k, body.mode); await sleep(1100);
     const char = S.chars.find((c) => c.id === body.characterId);
-    const it = { id: id("i"), kind: "image", mode: body.mode, style: body.style, aspect: body.mode === "text" || body.mode === "character" ? body.aspect : "1:1", prompt: body.prompt, created: now() };
+    const it = { id: id("i"), kind: "image", mode: body.mode, style: body.style, projectId: body.projectId || null, aspect: body.mode === "text" || body.mode === "character" ? body.aspect : "1:1", prompt: body.prompt, created: now() };
     it.url = art(body.prompt, body.style, it.aspect, char ? `${char.name}: ${body.prompt}` : ""); S.items.unshift(it); return ok({ item: it });
   }
   if (path === "/gallery" && method === "GET") return { items: S.items };
   if (path.startsWith("/gallery/")) {
     const it = S.items.find((i) => i.id === path.split("/")[2]); if (!it) throw new Error("Not found.");
     if (method === "DELETE") { S.items = S.items.filter((i) => i !== it); return { deleted: it.id }; }
+    if (method === "PATCH") { Object.assign(it, body); return { item: it }; }
+    if (path.endsWith("/share")) { it.shareId = body.on ? "s" + Math.random().toString(16).slice(2, 14) : null; return { item: it }; }
     if (it.kind === "video" && it.status === "rendering" && Date.now() - it.t0 > 9000) { it.status = "failed"; it.error = "Demo mode doesn't render real video. Sign in to animate with Luma Ray2."; S.credits += 38; }
     return ok({ item: it });
   }
