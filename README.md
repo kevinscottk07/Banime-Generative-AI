@@ -2,6 +2,12 @@
 
 Ideas, sketches and photos become anime art, with characters that stay on-model, manga pages, and short animated clips. Fully serverless on AWS.
 
+**Live:** https://d2sj8t7v5tnipg.cloudfront.net · **Demo (no sign-in):** https://d2sj8t7v5tnipg.cloudfront.net/?demo#/create
+
+## Design
+
+The palette comes from the key art: cobalt sky `#2b7bf0`, ultramarine ink `#0c1b4d`, cloud white `#f6f8fc` and raincoat yellow `#ffc81e` (primary actions only). Type is Dela Gothic One for display and Zen Kaku Gothic New for text. The hero stacks three layers on one 16:9 stage: the painting, the title, then the same painting masked to the character, so the title sits *behind* her. All art on the site (hero and the eight style samples) was generated with Banime's own Bedrock models; `tools/imgtool` turns the background-removed cutout into a 26 KB alpha mask.
+
 | Feature | How |
 |---|---|
 | **Create** | Text to anime in 8 styles (Shonen, Slice of life, 90s cel, Cyberpunk, Chibi, Manga ink, Mecha, Dark fantasy) with Stable Image Core, SD 3.5 Large or Stable Image Ultra on Amazon Bedrock |

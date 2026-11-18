@@ -186,7 +186,7 @@ table { width: 100%; border-collapse: collapse; } td, th { padding: 9px 8px; bor
   .steps, .tools { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .title { top: 30cqh; }
+  .title { top: 9.5cqh; }
   .hero-copy { right: 18px; }
   .looks-head { grid-template-columns: 1fr; }
   .strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; margin-inline: calc(-1 * clamp(18px, 4vw, 56px)); padding-inline: clamp(18px, 4vw, 56px); gap: 10px; scrollbar-width: none; }
