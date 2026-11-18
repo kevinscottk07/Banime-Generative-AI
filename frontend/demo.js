@@ -6,7 +6,7 @@ let n = 0;
 // Demo frames reuse the sample art made with Banime (one per style).
 function art(prompt, style = "shonen") {
   n++;
-  return `${(window.BANIME_CONFIG || {}).artBase || "/art/"}style-${BG[style] ? style : "shonen"}.jpg`;
+  return `${(window.BANIME_CONFIG || {}).artBase || "/art/"}style-${BG[style] ? style : "shonen"}.webp`;
 }
 const S = { credits: 120, ledger: [], items: [], chars: [], projects: [], pages: [], name: "Demo", prefs: {} };
 const PACKS = { starter: { name: "Starter", credits: 100, cents: 1500 }, creator: { name: "Creator", credits: 400, cents: 4900 }, studio: { name: "Studio", credits: 1000, cents: 10900 } };

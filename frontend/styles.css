@@ -90,7 +90,7 @@ body.is-landing.scrolled .topbar nav a.on { background: rgba(43, 123, 240, .12);
 .stage { position: absolute; left: 50%; top: 50%; width: max(100%, 100svh * 16 / 9); height: max(100svh, 100vw * 9 / 16); transform: translate(-50%, -50%); container-type: size; }
 @supports not (height: 1svh) { .stage { width: max(100%, 100vh * 16 / 9); height: max(100vh, 100vw * 9 / 16); } }
 .layer { position: absolute; inset: 0; }
-.paint { background: url("/art/hero-bg@4x.webp") center / 100% 100% no-repeat, url("/art/hero-s1988.png") center / 100% 100% no-repeat; }
+.paint { background: url("/art/hero-2560.webp") center / 100% 100% no-repeat, var(--sky); }
 .cut { -webkit-mask: url("/art/hero-mask.png") center / 100% 100% no-repeat; mask: url("/art/hero-mask.png") center / 100% 100% no-repeat; }
 .title { position: absolute; left: 0; right: 0; top: 23cqh; margin: 0; text-align: center; font: 400 min(17cqw, 21vw)/0.86 var(--display); letter-spacing: -.035em; color: #fff;
   text-shadow: 0 .02em .08em rgba(12, 27, 77, .18); pointer-events: none; }

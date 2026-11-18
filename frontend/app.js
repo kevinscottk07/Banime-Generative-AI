@@ -134,7 +134,7 @@ function renderNav() {
 const STYLES = [["shonen", "Shonen action", "少年"], ["slice", "Slice of life", "日常"], ["retro90", "90s cel", "九十"], ["cyber", "Cyberpunk", "電脳"],
   ["chibi", "Chibi", "ちび"], ["manga", "Manga ink", "漫画"], ["mecha", "Mecha", "機械"], ["fantasy", "Dark fantasy", "幻想"]];
 const ART = (CFG.artBase || "/art/");
-const styleArt = (k) => `${ART}style-${k}.jpg`;
+const styleArt = (k) => `${ART}style-${k}.webp`;
 const ASPECTS = [["1:1", "Square"], ["2:3", "Portrait"], ["9:16", "Story"], ["16:9", "Wide"], ["3:2", "Landscape"], ["21:9", "Cinema"]];
 const cost = (k) => ME?.costs?.[k] ?? 1;
 
