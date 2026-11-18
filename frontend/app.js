@@ -101,105 +101,104 @@ function renderNav() {
 // ------------------------------------------------------------------ shared data
 const STYLES = [["shonen", "Shonen action", "少年"], ["slice", "Slice of life", "日常"], ["retro90", "90s cel", "九十"], ["cyber", "Cyberpunk", "電脳"],
   ["chibi", "Chibi", "ちび"], ["manga", "Manga ink", "漫画"], ["mecha", "Mecha", "機械"], ["fantasy", "Dark fantasy", "幻想"]];
-const STYLE_BG = { shonen: "linear-gradient(160deg,#ff6a3d,#7c1d6f)", slice: "linear-gradient(160deg,#9be7c4,#3a7bd5)", retro90: "linear-gradient(160deg,#f7b267,#5f0f40)",
-  cyber: "linear-gradient(160deg,#ff2a8a,#1b0b3a 70%,#22d3ee)", chibi: "linear-gradient(160deg,#ffd1e2,#b8a1ff)", manga: "linear-gradient(160deg,#f5f5f5,#2b2b2b)",
-  mecha: "linear-gradient(160deg,#5c6b7a,#0f1a2b)", fantasy: "linear-gradient(160deg,#4b134f,#0b0614 70%,#c94b4b)" };
+const ART = (CFG.artBase || "/art/");
+const styleArt = (k) => `${ART}style-${k}.jpg`;
 const ASPECTS = [["1:1", "Square"], ["2:3", "Portrait"], ["9:16", "Story"], ["16:9", "Wide"], ["3:2", "Landscape"], ["21:9", "Cinema"]];
 const cost = (k) => ME?.costs?.[k] ?? 1;
 
 // ------------------------------------------------------------------ landing
 let heroCleanup = null;
-const MODES = [
-  ["Create", "Type an idea. Pick a look: Shonen, 90s cel, Cyberpunk, Chibi and more. Nova polishes your prompt in one tap.", "Stable Image Core · SD 3.5 · Ultra"],
-  ["Character lock", "Design a character once. Every new scene matches their face, hair and outfit from the reference sheet.", "Stability Style Guide"],
-  ["Sketch → Anime", "Scribble on the pad with your finger or mouse. Banime keeps your composition and inks it.", "Stability Control Sketch"],
-  ["Photo → Anime", "Turn a photo, a pet or a place into an anime frame that keeps the original's structure.", "Stability Control Structure"],
-  ["Animate", "Bring any frame to life: wind in the hair, drifting petals, a slow camera move.", "Luma Ray2 · 5 s"],
-  ["Manga page", "Drop frames into 4-koma or grid layouts, add speech bubbles and export a page.", "In-browser, free"],
-  ["Polish", "Cut out backgrounds for stickers or upscale to print size.", "Remove BG · 4× Upscale"],
+const STEPS = [
+  ["Describe it, or draw it", "Type a scene, scribble on the sketch pad, or upload a photo. Prompt help rewrites a rough idea into a detailed one for free."],
+  ["Pick a look", "Eight anime styles, from 90s cel to dark fantasy. Switch styles on the same idea as often as you like."],
+  ["Keep your character", "Save a character once. New scenes keep their face, hair and outfit, so a whole story looks like one series."],
+  ["Make it move", "Turn any frame into a five-second clip, or lay frames out as a manga page with speech bubbles."],
 ];
+const TOOLS = [
+  ["Manga pages", "Four-panel, grid and splash layouts with speech bubbles. Export the finished page as a PNG."],
+  ["Clean cutouts", "Remove the background from any frame for stickers, thumbnails and overlays."],
+  ["Print-size upscale", "Enlarge a frame four times for posters and prints."],
+  ["Private by default", "Your gallery and characters are visible only to you."],
+  ["Safe to share", "Content filters block explicit images, real-person deepfakes and hate."],
+  ["Credits back on failure", "Images start at 1 credit. If a generation fails, the credits come straight back."],
+];
+const googleSvg = `<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>`;
 
 function landing() {
   document.body.classList.add("is-landing");
   $app.innerHTML = `
-  <section class="hero">
-    <canvas class="hero-gl" aria-hidden="true"></canvas>
-    <div class="petals" aria-hidden="true">${Array.from({ length: 22 }, (_, i) => `<i style="left:${(i * 47) % 100 + 4}%;animation-duration:${9 + (i * 7) % 11}s;animation-delay:-${(i * 13) % 17}s;transform:scale(${0.6 + (i % 5) / 6})"></i>`).join("")}</div>
-    <div class="kanji" aria-hidden="true">アニメ</div>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="stage">
+      <div class="layer paint" aria-hidden="true"></div>
+      <h1 class="title" id="hero-title"><span>Banime</span></h1>
+      <div class="layer paint cut" aria-hidden="true"></div>
+    </div>
     <div class="hero-copy">
-      <div class="kicker">✿ Banime · your anime studio</div>
-      <h1 class="mega"><span class="line">Draw it.</span><span class="line">Make it <em>anime.</em></span><span class="line outline">Make it move.</span></h1>
-      <p class="lead">Ideas, sketches and photos become anime art with characters that stay on-model, manga pages, and short animated clips. Built on AWS.</p>
+      <p class="lead">Turn ideas, sketches and photos into anime art. Keep your characters on-model, lay out manga pages and animate any frame.</p>
       <div class="row cta-row">
-        <a href="#auth" class="btn big" data-go="auth">Start creating, it's free →</a>
-        <a href="?demo#/create" class="btn ghost big">Try the demo</a>
+        <a href="#auth" class="btn big" data-go="auth">Start with 30 free credits</a>
+        <a href="?demo#/create" class="btn glass big">Try the demo</a>
       </div>
-      <div class="stickers"><div class="sticker"><b>8</b><span>Styles</span></div><div class="sticker"><b>5s</b><span>Animate</span></div><div class="sticker"><b>4×</b><span>Upscale</span></div><div class="sticker"><b>30</b><span>Free ✦</span></div></div>
-    </div>
-    <div class="hud" aria-hidden="true">
-      <div class="callout c1"><i></i><b>Character lock</b><span>Same face, every scene</span></div>
-      <div class="callout c2"><i></i><b>Sketch → anime</b><span>Your lines, inked</span></div>
-      <div class="callout c3"><i></i><b>Animate</b><span>Luma Ray2 clips</span></div>
-      <div class="callout c4"><i></i><b>Prompt assist</b><span>Amazon Nova</span></div>
     </div>
   </section>
-  <div class="marquee" aria-hidden="true"><div class="track">${"CREATE ✿ <span class='jp'>アニメ</span> ✿ CHARACTER LOCK ✿ SKETCH TO ANIME ✿ PHOTO TO ANIME ✿ ANIMATE ✿ MANGA PAGES ✿ ".repeat(4)}</div></div>
-  <div class="marquee alt" aria-hidden="true"><div class="track">${"SHONEN ✦ SLICE OF LIFE ✦ 90S CEL ✦ CYBERPUNK ✦ CHIBI ✦ MANGA INK ✦ MECHA ✦ DARK FANTASY ✦ ".repeat(4)}</div></div>
 
-  <section class="modes-scroll">
-    <div class="sticky">
-      <div class="mode-left">
-        <div class="kicker">The studio</div>
-        <div class="bignum" id="mnum">01</div>
-        <h2 class="mode-title" id="mtitle">${MODES[0][0]}</h2>
-        <p class="lead" id="mdesc">${MODES[0][1]}</p>
-        <div class="chip" id="mchip">${MODES[0][2]}</div>
+  <section class="looks" aria-labelledby="looks-h">
+    <div class="looks-head">
+      <h2 id="looks-h">One character. Eight looks.</h2>
+      <p>Every frame below shows the same character, made in Banime. Pick a look and start from it.</p>
+    </div>
+    <div class="strip">${STYLES.map(([k, n, jp]) => `<a class="look" href="#/create" data-style="${k}"><img src="${styleArt(k)}" alt="The Banime character in ${n} style" loading="lazy" width="416" height="624"/><span class="cap"><b>${n}</b><i lang="ja">${jp}</i></span></a>`).join("")}</div>
+  </section>
+
+  <section class="steps" aria-labelledby="steps-h">
+    <h2 id="steps-h">From idea to scene in four steps</h2>
+    <ol>${STEPS.map(([t, d]) => `<li><h3>${t}</h3><p>${d}</p></li>`).join("")}</ol>
+  </section>
+
+  <section class="tools" aria-labelledby="tools-h">
+    <h2 id="tools-h">Also in the studio</h2>
+    <dl>${TOOLS.map(([t, d]) => `<div><dt>${t}</dt><dd>${d}</dd></div>`).join("")}</dl>
+  </section>
+
+  <section class="join" id="auth" aria-labelledby="join-h">
+    <img class="join-art" src="${styleArt("chibi")}" alt="" loading="lazy" width="416" height="624"/>
+    <div class="join-copy">
+      <h2 id="join-h">Your first 30 frames are free</h2>
+      <p>Sign in and get 30 credits. No card needed.</p>
+      <div class="authcard">
+        ${CFG.google ? `<button class="btn google big" id="g-login">${googleSvg}Continue with Google</button>` : ""}
+        <button class="btn ${CFG.google ? "ghost" : ""} big" id="e-login">Continue with email</button>
+        <p class="small">By continuing you agree to make original, non-explicit work.</p>
       </div>
-      <ol class="rail">${MODES.map((m, i) => `<li data-i="${i}" class="${i ? "" : "on"}"><span>${String(i + 1).padStart(2, "0")}</span>${m[0]}</li>`).join("")}</ol>
-    </div>
-    ${MODES.map((_, i) => `<div class="mode-step" data-i="${i}"></div>`).join("")}
-  </section>
-
-  <section class="styles-strip reveal">
-    <div class="kicker">Eight looks</div><h2>Pick a style. Change it any time.</h2>
-    <div class="style-cards">${STYLES.map(([k, n, jp]) => `<div class="style-card" data-jp="${jp}" style="background:${STYLE_BG[k]}"><span>${k.toUpperCase()}</span><b>${n}</b></div>`).join("")}</div>
-  </section>
-
-  <section class="bento reveal">
-    <div class="tile t-wide"><div class="kicker">Consistent characters</div><h3>Same hero. Every panel.</h3><p class="muted">Create a character once and Banime keeps their look across scenes, outfits and angles, using the reference sheet as a style guide.</p></div>
-    <div class="tile"><div class="kicker">Safe by design</div><h3>Guardrails on</h3><p class="muted">Amazon Bedrock Guardrails and model filters block explicit content, real-person deepfakes and hate.</p></div>
-    <div class="tile"><div class="kicker">Your data</div><h3>Private gallery</h3><p class="muted">Everything you make is stored in your private gallery, and only you can open it.</p></div>
-    <div class="tile"><div class="kicker">One login</div><h3>Google or email</h3><p class="muted">Sign in with Google in one tap, or use email with a verification code.</p></div>
-    <div class="tile"><div class="kicker">Fair credits</div><h3>Pay per frame</h3><p class="muted">Images from 1 credit. Failed generations are refunded automatically.</p></div>
-    <div class="tile t-full stat"><div><b>8</b><span>Anime styles</span></div><div><b>4</b><span>Ways to create</span></div><div><b>$0</b><span>Idle cost, fully serverless</span></div><div><b>30</b><span>Free credits to start</span></div></div>
-  </section>
-
-  <section class="final-cta reveal" id="auth">
-    <div><h2 class="mega" style="font-size:clamp(2.8rem,6vw,5.4rem)">Your first <em>30 frames</em><br/>are on us.</h2>
-      <p class="lead">Sign in to get 30 free credits. No card needed.</p></div>
-    <div class="card authcard">
-      <h3>Join Banime</h3>
-      ${CFG.google ? `<button class="btn google big" id="g-login"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.7c4.3-4 6.9-9.9 6.9-17z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>Continue with Google</button><div class="or">or</div>` : ""}
-      <button class="btn ${CFG.google ? "ghost" : ""} big" id="e-login">Continue with email</button>
-      <p class="small muted" style="margin-top:12px">By continuing you agree to use Banime for original, non-explicit content.</p>
     </div>
   </section>`;
   document.getElementById("g-login")?.addEventListener("click", () => auth.login("Google"));
   document.getElementById("e-login").onclick = () => auth.login("COGNITO");
+  $app.querySelectorAll(".look").forEach((a) => a.addEventListener("click", () => { S.style = a.dataset.style; }));
   bindScrollLinks($app);
-  heroCleanup?.(); heroCleanup = null;
-  import("./hero.js").then((m) => { heroCleanup = m.mountHero($app.querySelector(".hero-gl")); }).catch(() => $app.querySelector(".hero-gl")?.classList.add("nogl"));
-  const set = (i) => {
-    const [t, d, c] = MODES[i]; document.getElementById("mnum").textContent = String(i + 1).padStart(2, "0");
-    document.getElementById("mtitle").textContent = t; document.getElementById("mdesc").textContent = d; document.getElementById("mchip").textContent = c;
-    $app.querySelectorAll(".rail li").forEach((li) => li.classList.toggle("on", +li.dataset.i === i));
-    const left = $app.querySelector(".mode-left"); left.classList.remove("swap"); void left.offsetWidth; left.classList.add("swap");
+  heroCleanup?.(); heroCleanup = mountHero($app.querySelector(".hero"));
+}
+
+// Hero depth: the title sits between the painting and the masked character.
+// It drifts with the pointer and settles slower than the page on scroll.
+function mountHero(hero) {
+  const title = hero.querySelector(".title span");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  hero.classList.add("ready");
+  if (reduce) return () => {};
+  let px = 0, py = 0, tx = 0, ty = 0, raf = 0, sy = 0;
+  const loop = () => {
+    tx += (px - tx) * 0.08; ty += (py - ty) * 0.08;
+    title.style.setProperty("--dx", `${tx * 14}px`);
+    title.style.setProperty("--dy", `${ty * 8 + sy * 0.35}px`);
+    raf = requestAnimationFrame(loop);
   };
-  let cur = 0;
-  const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting && +e.target.dataset.i !== cur) { cur = +e.target.dataset.i; set(cur); } }), { rootMargin: "-50% 0px -50% 0px" });
-  $app.querySelectorAll(".mode-step").forEach((el) => io.observe(el));
-  const rv = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && e.target.classList.add("in")), { threshold: .12 });
-  $app.querySelectorAll(".reveal").forEach((el) => rv.observe(el));
+  const move = (e) => { px = e.clientX / innerWidth - 0.5; py = e.clientY / innerHeight - 0.5; };
+  const scr = () => { sy = Math.min(scrollY, innerHeight); };
+  addEventListener("pointermove", move, { passive: true });
+  addEventListener("scroll", scr, { passive: true });
+  raf = requestAnimationFrame(loop);
+  return () => { cancelAnimationFrame(raf); removeEventListener("pointermove", move); removeEventListener("scroll", scr); };
 }
 function bindScrollLinks(root) {
   root.querySelectorAll("[data-go]").forEach((a) => a.addEventListener("click", (e) => {
@@ -246,7 +245,7 @@ async function create() {
       <label>Prompt</label>
       <div class="prompt-wrap"><textarea id="prompt" rows="4" placeholder="A swordswoman on a rooftop at dusk, wind in her hair, city lights below">${esc(S.prompt)}</textarea>
         <button class="btn ghost small" id="enh" title="Let Amazon Nova improve your prompt">✨ Enhance</button></div>
-      <label>Style</label><div class="chips" id="styles">${STYLES.map(([k, n]) => `<button data-style="${k}" class="${S.style === k ? "on" : ""}">${n}</button>`).join("")}</div>
+      <label>Style</label><div class="chips" id="styles">${STYLES.map(([k, n]) => `<button data-style="${k}" class="${S.style === k ? "on" : ""}" style="background-image:url('${styleArt(k)}')" aria-pressed="${S.style === k}"><span>${n}</span></button>`).join("")}</div>
       <div id="aspectbox"><label>Shape</label><div class="chips" id="aspects">${ASPECTS.map(([k, n]) => `<button data-aspect="${k}" class="${S.aspect === k ? "on" : ""}">${n} <span class="muted">${k}</span></button>`).join("")}</div></div>
       <div id="modelbox"><label>Model</label><div class="chips" id="models">${[["core", `Fast · ${1}✦`], ["sd35", `Detailed · ${1}✦`], ["ultra", `Ultra · ${2}✦`]].map(([k, n]) => `<button data-model="${k}" class="${S.model === k ? "on" : ""}">${n}</button>`).join("")}</div></div>
       <button class="btn big gen" id="gen">Generate</button>

@@ -3,19 +3,10 @@ const BG = { shonen: ["#ff6a3d", "#7c1d6f"], slice: ["#9be7c4", "#3a7bd5"], retr
   chibi: ["#ffd1e2", "#b8a1ff"], manga: ["#f5f5f5", "#2b2b2b"], mecha: ["#5c6b7a", "#0f1a2b"], fantasy: ["#4b134f", "#0b0614"] };
 const DIM = { "1:1": [1024, 1024], "2:3": [832, 1248], "9:16": [720, 1280], "16:9": [1280, 720], "3:2": [1248, 832], "21:9": [1536, 658] };
 let n = 0;
-function art(prompt, style = "shonen", aspect = "1:1", label = "") {
-  const [w, h] = DIM[aspect] || DIM["1:1"]; const [a, b] = BG[style] || BG.shonen; n++;
-  const words = (label || prompt).replace(/[<&"]/g, "").split(" ").slice(0, 7).join(" ");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>
-  <radialGradient id="s" cx=".7" cy=".3" r=".25"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
-  <rect width="${w}" height="${h}" fill="url(#g)"/><circle cx="${w * .7}" cy="${h * .3}" r="${Math.min(w, h) * .22}" fill="url(#s)"/>
-  ${Array.from({ length: 14 }, (_, i) => `<line x1="${(i * 97 + n * 31) % w}" y1="0" x2="${(i * 97 + n * 31) % w - 120}" y2="${h}" stroke="#fff" stroke-opacity=".08" stroke-width="3"/>`).join("")}
-  <path d="M${w * .38} ${h} C ${w * .36} ${h * .62}, ${w * .62} ${h * .62}, ${w * .6} ${h} Z" fill="#0b0614" opacity=".85"/>
-  <circle cx="${w * .49}" cy="${h * .55}" r="${Math.min(w, h) * .09}" fill="#0b0614" opacity=".85"/>
-  <path d="M${w * .41} ${h * .52} q ${w * .08} -${h * .16} ${w * .17} 0 q -${w * .02} -${h * .03} -${w * .08} -${h * .02} z" fill="#0b0614" opacity=".9"/>
-  <text x="${w * .05}" y="${h * .94}" font-family="Arial" font-size="${Math.min(w, h) * .035}" fill="#fff" opacity=".8">${words}</text>
-  <text x="${w * .95}" y="${h * .08}" text-anchor="end" font-family="sans-serif" font-weight="900" font-size="${Math.min(w, h) * .06}" fill="#fff" opacity=".35">アニメ</text></svg>`;
-  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+// Demo frames reuse the sample art made with Banime (one per style).
+function art(prompt, style = "shonen") {
+  n++;
+  return `${(window.BANIME_CONFIG || {}).artBase || "/art/"}style-${BG[style] ? style : "shonen"}.jpg`;
 }
 const S = { credits: 120, ledger: [], items: [], chars: [] };
 const now = () => Math.floor(Date.now() / 1000);
