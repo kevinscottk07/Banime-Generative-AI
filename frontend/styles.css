@@ -92,7 +92,7 @@ body.is-landing.scrolled .topbar nav a.on { background: rgba(43, 123, 240, .12);
 .layer { position: absolute; inset: 0; }
 .paint { background: url("/art/hero-bg@4x.webp") center / 100% 100% no-repeat, url("/art/hero-s1988.png") center / 100% 100% no-repeat; }
 .cut { -webkit-mask: url("/art/hero-mask.png") center / 100% 100% no-repeat; mask: url("/art/hero-mask.png") center / 100% 100% no-repeat; }
-.title { position: absolute; left: 0; right: 0; top: 23cqh; margin: 0; text-align: center; font: 400 18cqw/0.86 var(--display); letter-spacing: -.035em; color: #fff;
+.title { position: absolute; left: 0; right: 0; top: 23cqh; margin: 0; text-align: center; font: 400 min(17cqw, 21vw)/0.86 var(--display); letter-spacing: -.035em; color: #fff;
   text-shadow: 0 .02em .08em rgba(12, 27, 77, .18); pointer-events: none; }
 .title span { display: inline-block; transform: translate(var(--dx, 0), calc(var(--dy, 0px) + 18%)); opacity: 0; transition: transform 1.4s var(--ease) .15s, opacity .9s ease .15s; }
 .hero.ready .title span { transform: translate(var(--dx, 0), var(--dy, 0)); opacity: 1; transition: opacity .9s ease .15s; }
@@ -186,7 +186,7 @@ table { width: 100%; border-collapse: collapse; } td, th { padding: 9px 8px; bor
   .steps, .tools { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  .title { top: 31cqh; font-size: 27vw; left: 50%; right: auto; width: 100vw; transform: translateX(-50%); }
+  .title { top: 30cqh; }
   .hero-copy { right: 18px; }
   .looks-head { grid-template-columns: 1fr; }
   .strip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; margin-inline: calc(-1 * clamp(18px, 4vw, 56px)); padding-inline: clamp(18px, 4vw, 56px); gap: 10px; scrollbar-width: none; }
