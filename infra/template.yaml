@@ -1,0 +1,298 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Banime - anime studio on AWS (Bedrock Stability + Luma Ray2 + Nova, Cognito Google/email login)
+
+# Deploy in us-west-2 (Luma Ray2 and the Stability image services live there).
+
+Parameters:
+  CodeBucket: { Type: String }
+  CodeKey: { Type: String }
+  AdminEmails: { Type: String, Default: "" }
+  AnimatePolicy: { Type: String, Default: admins, AllowedValues: [admins, all] }
+  WelcomeCredits: { Type: Number, Default: 30 }
+  AdminStartCredits: { Type: Number, Default: 300 }
+  MonthlyVideoCapUsd: { Type: Number, Default: 40 }
+  PromptModelId: { Type: String, Default: us.amazon.nova-2-lite-v1:0 }
+  AuthDomainPrefix: { Type: String, Default: "", Description: "Cognito domain prefix (default banime-<account id>)" }
+  GoogleClientId: { Type: String, Default: "" }
+  GoogleClientSecret: { Type: String, Default: "", NoEcho: true }
+  BudgetAlertEmail: { Type: String, Default: "" }
+  MonthlyBudgetUsd: { Type: Number, Default: 50 }
+  ExtraOrigin: { Type: String, Default: "http://localhost:8766" }
+
+Conditions:
+  HasGoogle: !Not [!Equals [!Ref GoogleClientId, ""]]
+  HasBudget: !Not [!Equals [!Ref BudgetAlertEmail, ""]]
+  DefaultPrefix: !Equals [!Ref AuthDomainPrefix, ""]
+
+Resources:
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
+      OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerEnforced }] }
+      CorsConfiguration: { CorsRules: [{ AllowedMethods: [GET, HEAD], AllowedOrigins: ["*"], AllowedHeaders: ["*"], MaxAge: 3600 }] }
+      Tags: [{ Key: app, Value: banime }]
+
+  MediaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MediaBucket
+      PolicyDocument:
+        Statement:
+          - { Sid: DenyInsecureTransport, Effect: Deny, Principal: "*", Action: "s3:*", Resource: [!GetAtt MediaBucket.Arn, !Sub "${MediaBucket.Arn}/*"], Condition: { Bool: { "aws:SecureTransport": "false" } } }
+
+  SiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerEnforced }] }
+      Tags: [{ Key: app, Value: banime }]
+
+  SiteOac:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig: { Name: !Sub "${AWS::StackName}-site", OriginAccessControlOriginType: s3, SigningBehavior: always, SigningProtocol: sigv4 }
+
+  SiteDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Banime
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - { Id: site, DomainName: !GetAtt SiteBucket.RegionalDomainName, OriginAccessControlId: !GetAtt SiteOac.Id, S3OriginConfig: { OriginAccessIdentity: "" } }
+        DefaultCacheBehavior:
+          TargetOriginId: site
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03 # Managed-SecurityHeadersPolicy
+        CustomErrorResponses: [{ ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html }]
+
+  SiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SiteBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub "${SiteBucket.Arn}/*"
+            Condition: { StringEquals: { "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SiteDistribution}" } }
+
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: pk, AttributeType: S }, { AttributeName: sk, AttributeType: S }]
+      KeySchema: [{ AttributeName: pk, KeyType: HASH }, { AttributeName: sk, KeyType: RANGE }]
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      SSESpecification: { SSEEnabled: true }
+      Tags: [{ Key: app, Value: banime }]
+
+  # ------------------------------------------------------------------ auth: Cognito managed login + Google
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      Policies: { PasswordPolicy: { MinimumLength: 10, RequireLowercase: true, RequireUppercase: true, RequireNumbers: true, RequireSymbols: false } }
+      AccountRecoverySetting: { RecoveryMechanisms: [{ Name: verified_email, Priority: 1 }] }
+      VerificationMessageTemplate: { DefaultEmailOption: CONFIRM_WITH_CODE, EmailSubject: Your Banime code, EmailMessage: "Your Banime verification code is {####}" }
+      Schema: [{ Name: email, AttributeDataType: String, Required: true, Mutable: true }, { Name: name, AttributeDataType: String, Mutable: true }]
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !If [DefaultPrefix, !Sub "banime-${AWS::AccountId}", !Ref AuthDomainPrefix]
+      ManagedLoginVersion: 2
+
+  GoogleIdp:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogle
+    Properties:
+      UserPoolId: !Ref UserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails: { client_id: !Ref GoogleClientId, client_secret: !Ref GoogleClientSecret, authorize_scopes: "openid email profile" }
+      AttributeMapping: { email: email, email_verified: email_verified, name: name, picture: picture }
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: web
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, profile]
+      SupportedIdentityProviders: !If [HasGoogle, [COGNITO, !Ref GoogleIdp], [COGNITO]]
+      CallbackURLs: [!Sub "https://${SiteDistribution.DomainName}/", !Sub "${ExtraOrigin}/"]
+      LogoutURLs: [!Sub "https://${SiteDistribution.DomainName}/", !Sub "${ExtraOrigin}/"]
+      IdTokenValidity: 60
+      AccessTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits: { IdToken: minutes, AccessToken: minutes, RefreshToken: days }
+
+  LoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: !Ref UserPoolClient
+      UseCognitoProvidedValues: true
+
+  # ------------------------------------------------------------------ guardrail
+  ContentGuardrail:
+    Type: AWS::Bedrock::Guardrail
+    Properties:
+      Name: !Sub "${AWS::StackName}-content"
+      Description: Screens Banime prompts
+      BlockedInputMessaging: This request goes against Banime's content policy.
+      BlockedOutputsMessaging: This response goes against Banime's content policy.
+      ContentPolicyConfig:
+        FiltersConfig:
+          - { Type: SEXUAL, InputStrength: HIGH, OutputStrength: HIGH }
+          - { Type: VIOLENCE, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+          - { Type: HATE, InputStrength: HIGH, OutputStrength: HIGH }
+          - { Type: INSULTS, InputStrength: MEDIUM, OutputStrength: MEDIUM }
+          - { Type: MISCONDUCT, InputStrength: HIGH, OutputStrength: HIGH }
+          - { Type: PROMPT_ATTACK, InputStrength: HIGH, OutputStrength: NONE }
+      TopicPolicyConfig:
+        TopicsConfig:
+          - Name: RealPersonDepictions
+            Type: DENY
+            Definition: Images that depict or impersonate a real, identifiable person such as a celebrity, politician or private individual by name.
+            Examples: ["draw Taylor Swift as an anime girl", "anime version of the president holding a gun"]
+          - Name: MinorsSexualized
+            Type: DENY
+            Definition: Any content that sexualizes, undresses or places in romantic or suggestive situations a character who is or appears to be a child or teenager.
+            Examples: ["schoolgirl in lingerie", "loli character posing suggestively"]
+      Tags: [{ Key: app, Value: banime }]
+
+  ContentGuardrailVersion:
+    Type: AWS::Bedrock::GuardrailVersion
+    Properties: { GuardrailIdentifier: !GetAtt ContentGuardrail.GuardrailId, Description: deployed }
+
+  # ------------------------------------------------------------------ compute
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Statement: [{ Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }] }
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole]
+      Policies:
+        - PolicyName: app
+          PolicyDocument:
+            Statement:
+              - { Effect: Allow, Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:Query], Resource: !GetAtt Table.Arn }
+              - { Effect: Allow, Action: [s3:GetObject, s3:PutObject, s3:DeleteObject], Resource: !Sub "${MediaBucket.Arn}/*" }
+              - { Effect: Allow, Action: s3:ListBucket, Resource: !GetAtt MediaBucket.Arn }
+              - { Sid: PublishBundledSite, Effect: Allow, Action: s3:PutObject, Resource: !Sub "${SiteBucket.Arn}/*" }
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:StartAsyncInvoke, bedrock:GetAsyncInvoke]
+                Resource:
+                  - "arn:aws:bedrock:*::foundation-model/*"
+                  - !Sub "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:async-invoke/*"
+              - { Effect: Allow, Action: bedrock:ApplyGuardrail, Resource: !GetAtt ContentGuardrail.GuardrailArn }
+              - { Sid: AutoEnableMarketplaceModels, Effect: Allow, Action: [aws-marketplace:ViewSubscriptions, aws-marketplace:Subscribe], Resource: "*" }
+
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-api", RetentionInDays: 30 }
+
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: ApiLogs
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-api"
+      Runtime: python3.12
+      Architectures: [arm64]
+      Handler: banime.api.handler
+      MemorySize: 1024
+      Timeout: 29
+      Role: !GetAtt ApiRole.Arn
+      Code: { S3Bucket: !Ref CodeBucket, S3Key: !Ref CodeKey }
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref Table
+          MEDIA_BUCKET: !Ref MediaBucket
+          SITE_BUCKET: !Ref SiteBucket
+          GUARDRAIL_ID: !GetAtt ContentGuardrail.GuardrailId
+          GUARDRAIL_VERSION: !GetAtt ContentGuardrailVersion.Version
+          ADMIN_EMAILS: !Ref AdminEmails
+          ANIMATE_POLICY: !Ref AnimatePolicy
+          WELCOME_CREDITS: !Ref WelcomeCredits
+          ADMIN_START_CREDITS: !Ref AdminStartCredits
+          MONTHLY_VIDEO_CAP_USD: !Ref MonthlyVideoCapUsd
+          PROMPT_MODEL_ID: !Ref PromptModelId
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins: [!Sub "https://${SiteDistribution.DomainName}", !Ref ExtraOrigin]
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [authorization, content-type]
+        MaxAge: 3600
+
+  JwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizerType: JWT
+      Name: cognito
+      IdentitySource: [$request.header.Authorization]
+      JwtConfiguration: { Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}", Audience: [!Ref UserPoolClient] }
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties: { ApiId: !Ref HttpApi, IntegrationType: AWS_PROXY, IntegrationUri: !GetAtt ApiFunction.Arn, PayloadFormatVersion: "2.0", TimeoutInMillis: 29000 }
+
+  ProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: { ApiId: !Ref HttpApi, RouteKey: "ANY /{proxy+}", AuthorizationType: JWT, AuthorizerId: !Ref JwtAuthorizer, Target: !Sub "integrations/${ApiIntegration}" }
+
+  HealthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties: { ApiId: !Ref HttpApi, RouteKey: "GET /health", AuthorizationType: NONE, Target: !Sub "integrations/${ApiIntegration}" }
+
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties: { ApiId: !Ref HttpApi, StageName: $default, AutoDeploy: true, DefaultRouteSettings: { ThrottlingBurstLimit: 30, ThrottlingRateLimit: 15 } }
+
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties: { FunctionName: !Ref ApiFunction, Action: lambda:InvokeFunction, Principal: apigateway.amazonaws.com, SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*" }
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Condition: HasBudget
+    Properties:
+      Budget: { BudgetName: !Sub "${AWS::StackName}-monthly", BudgetType: COST, TimeUnit: MONTHLY, BudgetLimit: { Amount: !Ref MonthlyBudgetUsd, Unit: USD } }
+      NotificationsWithSubscribers:
+        - { Notification: { NotificationType: ACTUAL, ComparisonOperator: GREATER_THAN, Threshold: 80, ThresholdType: PERCENTAGE }, Subscribers: [{ SubscriptionType: EMAIL, Address: !Ref BudgetAlertEmail }] }
+
+Outputs:
+  SiteUrl: { Value: !Sub "https://${SiteDistribution.DomainName}" }
+  ApiUrl: { Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com" }
+  UserPoolId: { Value: !Ref UserPool }
+  UserPoolClientId: { Value: !Ref UserPoolClient }
+  AuthDomain: { Value: !Sub ["https://${D}.auth.${AWS::Region}.amazoncognito.com", { D: !Ref UserPoolDomain }] }
+  GoogleRedirectUri: { Value: !Sub ["https://${D}.auth.${AWS::Region}.amazoncognito.com/oauth2/idpresponse", { D: !Ref UserPoolDomain }] }
+  GoogleEnabled: { Value: !If [HasGoogle, "true", "false"] }
+  SiteBucket: { Value: !Ref SiteBucket }
+  MediaBucket: { Value: !Ref MediaBucket }
