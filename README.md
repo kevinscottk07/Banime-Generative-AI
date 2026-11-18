@@ -22,6 +22,11 @@ The palette comes from the key art: cobalt sky `#2b7bf0`, ultramarine ink `#0c1b
 | **Safety** | Amazon Bedrock Guardrails (sexual content, minors, real-person depictions, hate, prompt attacks) plus Stability's own input/output filters |
 | **Credits** | Atomic DynamoDB ledger, automatic refunds on failures, 30 free credits per new account |
 
+## Portal (signed in)
+Home · Create · Characters · Projects · Manga (pages saved to your account) · Library (filters, favorites, public share links) · Credits (Stripe Checkout, off until keys are added) · Settings (profile, defaults, data export, account delete) · Admin (owner only). Public pages: `#/pricing`, `#/help`, `#/legal/terms|privacy|content`, `#/s/{shareId}`.
+
+Payments: put `{"secretKey": "sk_...", "webhookSecret": "whsec_..."}` in the `banime/stripe` secret and point a Stripe webhook (`checkout.session.completed`) at the `StripeWebhookUrl` stack output.
+
 ## Architecture
 CloudFront + S3 (static SPA) → API Gateway HTTP API (Cognito JWT authorizer) → Lambda (Python) → Bedrock (Stability, Nova, Luma Ray2), DynamoDB, S3. Everything is in `infra/template.yaml`.
 
