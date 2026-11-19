@@ -296,6 +296,18 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties: { ApiId: !Ref HttpApi, RouteKey: "ANY /public/{proxy+}", AuthorizationType: NONE, Target: !Sub "integrations/${ApiIntegration}" }
 
+  SweepRule:  # finishes clips nobody is watching and notifies their owners
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Banime clip watcher
+      ScheduleExpression: rate(2 minutes)
+      State: ENABLED
+      Targets: [{ Id: api, Arn: !GetAtt ApiFunction.Arn, Input: '{"action":"sweep"}' }]
+
+  SweepPermission:
+    Type: AWS::Lambda::Permission
+    Properties: { FunctionName: !Ref ApiFunction, Action: lambda:InvokeFunction, Principal: events.amazonaws.com, SourceArn: !GetAtt SweepRule.Arn }
+
   ApiStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties: { ApiId: !Ref HttpApi, StageName: $default, AutoDeploy: true, DefaultRouteSettings: { ThrottlingBurstLimit: 30, ThrottlingRateLimit: 15 } }

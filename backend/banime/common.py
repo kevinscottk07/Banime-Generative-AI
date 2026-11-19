@@ -122,6 +122,18 @@ def get_raw(pk: str, sk: str) -> dict | None:
     return r.get("Item")
 
 
+def query_before(pk: str, before: str | None, limit: int) -> list[tuple[str, dict]]:
+    """Newest-first page of a partition whose sort keys sort by time; `before` is the last sk seen."""
+    vals = {":pk": {"S": pk}}
+    cond = "pk = :pk"
+    if before:
+        cond += " AND sk < :before"
+        vals[":before"] = {"S": before}
+    r = client("dynamodb").query(TableName=table(), KeyConditionExpression=cond, ExpressionAttributeValues=vals,
+                                 ScanIndexForward=False, Limit=limit)
+    return [(i["sk"]["S"], json.loads(i["doc"]["S"])) for i in r.get("Items", [])]
+
+
 def query_prefix(pk: str, sk_prefix: str, limit: int = 100, newest_first: bool = True) -> list[dict]:
     r = client("dynamodb").query(
         TableName=table(),

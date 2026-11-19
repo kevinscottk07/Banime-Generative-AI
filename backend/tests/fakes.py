@@ -30,7 +30,9 @@ class FakeDynamo:
     def query(self, TableName, KeyConditionExpression, ExpressionAttributeValues, ScanIndexForward=True, Limit=100, **_):
         pk = ExpressionAttributeValues[":pk"]["S"]
         pre = ExpressionAttributeValues[":sk"]["S"] if ":sk" in ExpressionAttributeValues else ""
-        rows = sorted((k, v) for k, v in self.items.items() if k[0] == pk and k[1].startswith(pre))
+        before = ExpressionAttributeValues.get(":before", {}).get("S")
+        rows = sorted((k, v) for k, v in self.items.items() if k[0] == pk and k[1].startswith(pre)
+                      and (before is None or k[1] < before))
         if not ScanIndexForward:
             rows.reverse()
         return {"Items": [v for _, v in rows[:Limit]]}
@@ -109,6 +111,11 @@ class FakeBedrock:
         if kw["toolConfig"]["tools"][0]["toolSpec"]["name"] == "submit_prompt":
             return {"output": {"message": {"content": [{"toolUse": {"name": "submit_prompt", "input": {
                 "prompt": "A swordswoman on a rooftop at dusk, wind in her hair", "title": "Rooftop Duel"}}}]}}}
+        if kw["toolConfig"]["tools"][0]["toolSpec"]["name"] == "submit_story":
+            n = int(kw["system"][0]["text"].split("exactly ")[1].split(" ")[0])
+            return {"output": {"message": {"content": [{"toolUse": {"name": "submit_story", "input": {
+                "title": "Wind Courier", "scenes": [{"prompt": f"the character on a rooftop, scene {i}", "caption": f"Line {i}"}
+                                                    for i in range(1, n + 1)]}}}]}}}
         n = int(kw["messages"][0]["content"][0]["text"].split("Number of shots: ")[1].split("\n")[0])
         shots = [{"title": f"Shot {i}", "duration": 5 if i % 2 else 9, "camera": "slow push in",
                   "castInShot": ["Ana"], "keyframePrompt": f"Ana at a lighthouse, frame {i}",

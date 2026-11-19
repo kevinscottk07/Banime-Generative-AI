@@ -103,8 +103,8 @@ def delete_me(who, body, _p):
         if not r.get("IsTruncated") or not token:
             break
     for sk, doc in common.query_all(upk(who)):
-        if sk.startswith("ITEM#") and doc.get("shareId"):
-            common.delete_item(f"SHARE#{doc['shareId']}", "META")
+        if sk.startswith("ITEM#"):
+            unshare_on_delete(doc)
         common.delete_item(upk(who), sk)
     pool = common.env("USER_POOL_ID")
     if pool and who.get("username"):
@@ -142,13 +142,17 @@ def share_item(who, body, p):
                                                  "created": common.now()})
         it["shareId"] = sid
     elif not on and it.get("shareId"):
+        from .social import feed_remove
         common.delete_item(f"SHARE#{it['shareId']}", "META")
         it["shareId"] = None
+        feed_remove(it)
     common.put_item(*item_key(who, it["id"]), it)
     return 200, {"item": view(it)}
 
 
 def unshare_on_delete(it: dict) -> None:
+    from .social import feed_remove
+    feed_remove(it)
     if it.get("shareId"):
         common.delete_item(f"SHARE#{it['shareId']}", "META")
 
@@ -205,6 +209,12 @@ def create_project(who, body, _p):
         raise HttpError(400, "You can have up to 100 projects.")
     pr = {"id": common.new_id("p"), "name": name, "description": _clean_text(body.get("description"), 400),
           "created": common.now(), "coverId": None}
+    st = body.get("story")
+    if isinstance(st, dict):
+        pr["story"] = {"premise": _clean_text(st.get("premise"), 1500), "style": st.get("style") if st.get("style") in ai.STYLES else None,
+                       "characterId": st.get("characterId") if re.fullmatch(r"c[0-9a-f]{12}", st.get("characterId") or "") else None,
+                       "scenes": [{"prompt": _clean_text(x.get("prompt"), 600), "caption": _clean_text(x.get("caption"), 120)}
+                                  for x in (st.get("scenes") or [])[:6] if isinstance(x, dict)]}
     common.put_item(*project_key(who, pr["id"]), pr)
     return 201, {"project": pr}
 

@@ -99,16 +99,19 @@ const ICON = {
   credits: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9 9.5c0-1.2 1.3-2 3-2s3 .8 3 2-1.3 1.8-3 2.3-3 1-3 2.2 1.3 2 3 2 3-.8 3-2"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   admin: '<path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+  story: '<path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h6M8 11h6"/>',
+  explore: '<circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/>',
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
 };
 const icon = (k) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
-const PORTAL = [["Studio", [["home", "Home"], ["create", "Create"], ["characters", "Characters"], ["projects", "Projects"], ["manga", "Manga"], ["library", "Library"]]],
+const PORTAL = [["Studio", [["home", "Home"], ["create", "Create"], ["characters", "Characters"], ["story", "Story"], ["projects", "Projects"], ["manga", "Manga"], ["library", "Library"], ["explore", "Explore"]]],
   ["Account", [["credits", "Credits"], ["settings", "Settings"]]]];
 const $side = document.getElementById("side");
 function renderNav() {
   const h = location.hash;
   if (!auth.signedIn) {
     document.body.classList.remove("portal"); $side.innerHTML = "";
-    $nav.innerHTML = `<a href="#/pricing" class="${h.startsWith("#/pricing") ? "on" : ""}">Pricing</a><a href="#/help" class="${h.startsWith("#/help") ? "on" : ""}">Help</a><a href="#auth" data-go="auth">Sign in</a>`;
+    $nav.innerHTML = `<a href="#/explore" class="${h.startsWith("#/explore") ? "on" : ""}">Explore</a><a href="#/pricing" class="${h.startsWith("#/pricing") ? "on" : ""}">Pricing</a><a href="#/help" class="${h.startsWith("#/help") ? "on" : ""}">Help</a><a href="#auth" data-go="auth">Sign in</a>`;
     bindScrollLinks($nav); return;
   }
   const portal = document.body.classList.contains("portal");
@@ -116,6 +119,7 @@ function renderNav() {
   $nav.innerHTML = `${DEMO ? '<span class="pill">Demo</span>' : ""}
     ${portal ? "" : '<a href="#/home">Open studio</a>'}
     <a class="pill credit" href="#/credits" title="Credits">✦ <b>${ME?.credits ?? "–"}</b></a>
+    ${DEMO ? "" : `<div class="menu"><button class="bell" id="bell" aria-label="Notifications${ME?.unread ? `, ${ME.unread} unread` : ""}" aria-haspopup="true">${icon("bell")}${ME?.unread ? `<i class="dot">${ME.unread > 9 ? "9+" : ME.unread}</i>` : ""}</button><div class="menu-pop notif-pop" id="bell-pop" hidden></div></div>`}
     ${portal ? '<a class="btn small" href="#/create">+ New</a>' : ""}
     <div class="menu"><button class="avatar" title="${esc(ME?.email || "Account")}" id="acct" aria-haspopup="true" aria-expanded="false">${esc((ME?.name || "?")[0].toUpperCase())}</button>
       <div class="menu-pop" id="acct-pop" hidden><div class="small muted" style="padding:8px 12px 4px">${esc(ME?.email || "")}</div>
@@ -123,6 +127,7 @@ function renderNav() {
   const pop = document.getElementById("acct-pop"), btn = document.getElementById("acct");
   btn.onclick = (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; btn.setAttribute("aria-expanded", String(!pop.hidden)); };
   document.getElementById("acct-out").onclick = () => auth.logout();
+  document.getElementById("bell")?.addEventListener("click", (e) => { e.stopPropagation(); openBell(); });
   document.addEventListener("click", () => { pop.hidden = true; btn.setAttribute("aria-expanded", "false"); }, { once: true });
   $side.innerHTML = PORTAL.map(([g, list]) => `<div class="side-group"><div class="side-h">${g}</div>${list.map(([k, l]) =>
     `<a href="#/${k}" class="${on(k) ? "on" : ""}" data-k="${k}">${icon(k)}<span>${l}</span></a>`).join("")}</div>`).join("")
@@ -420,7 +425,9 @@ async function openItem(id) {
       <p class="small muted">${new Date(it.created * 1000).toLocaleString()} · AI-generated</p>
       <label>Project</label><select id="proj"><option value="">Not in a project</option>${projects.map((p) => `<option value="${p.id}" ${it.projectId === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
       <div class="card share-box"><div class="row spread"><b>Public link</b><label class="switch"><input type="checkbox" id="shr" ${it.shareId ? "checked" : ""} ${!isImg && it.status !== "ready" ? "disabled" : ""}/><span></span></label></div>
-        <div id="shl" class="small">${it.shareId ? `<div class="row" style="margin-top:8px"><input readonly value="${esc(shareUrl(it.shareId))}"/><button class="btn ghost small" data-act="copy">Copy</button></div>` : '<p class="muted" style="margin:6px 0 0">Off. Turn on to get a link anyone can open.</p>'}</div></div>
+        <div id="shl" class="small">${it.shareId ? `<div class="row" style="margin-top:8px"><input readonly value="${esc(shareUrl(it.shareId))}"/><button class="btn ghost small" data-act="copy">Copy</button></div>` : '<p class="muted" style="margin:6px 0 0">Off. Turn on to get a link anyone can open.</p>'}</div>
+        <div class="row spread" style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px;flex-wrap:nowrap"><div style="flex:1"><b>Show on Explore</b><p class="small muted" style="margin:2px 0 0">Anyone browsing Banime can see it, with your display name.</p></div><label class="switch"><input type="checkbox" id="exp" ${it.feedSk ? "checked" : ""} ${(!isImg && it.status !== "ready") || it.hidden ? "disabled" : ""}/><span></span></label></div>
+        ${it.hidden ? '<p class="small" style="color:var(--red);margin:8px 0 0">A moderator removed this from Explore.</p>' : ""}</div>
       <div class="grid actions" style="margin-top:14px">
         ${it.url ? `<a class="btn ghost" href="${esc(it.url)}" download target="_blank" rel="noopener">⬇ Download</a>` : ""}
         ${isImg ? `<button class="btn ghost" data-act="removebg">✂️ Remove background · ${cost("removebg")}✦</button>
@@ -447,10 +454,17 @@ async function openItem(id) {
     try { const r = await api("POST", `/gallery/${it.id}/share`, { on: e.target.checked }); Object.assign(it, r.item); dirty = true;
       ov.querySelector("#shl").innerHTML = it.shareId ? `<div class="row" style="margin-top:8px"><input readonly value="${esc(shareUrl(it.shareId))}"/><button class="btn ghost small" data-act="copy">Copy</button></div>` : '<p class="muted" style="margin:6px 0 0">Link turned off. Anyone who had it now sees "not found".</p>';
       ov.querySelector("[data-act=copy]")?.addEventListener("click", () => copyText(shareUrl(it.shareId)));
-      if (it.shareId) copyText(shareUrl(it.shareId));
+      if (it.shareId) copyText(shareUrl(it.shareId)); else ov.querySelector("#exp").checked = false;
     } catch (er) { e.target.checked = !e.target.checked; toast(er.message, true); }
   };
   ov.querySelector("[data-act=copy]")?.addEventListener("click", () => copyText(shareUrl(it.shareId)));
+  ov.querySelector("#exp").onchange = async (e) => {
+    try { const r = await api("POST", `/gallery/${it.id}/explore`, { on: e.target.checked }); Object.assign(it, r.item); dirty = true;
+      ov.querySelector("#shr").checked = !!it.shareId;
+      if (it.shareId && !ov.querySelector("#shl input")) ov.querySelector("#shl").innerHTML = `<div class="row" style="margin-top:8px"><input readonly value="${esc(shareUrl(it.shareId))}"/><button class="btn ghost small" data-act="copy">Copy</button></div>`;
+      toast(e.target.checked ? "Posted to Explore." : "Taken off Explore.");
+    } catch (er) { e.target.checked = !e.target.checked; toast(er.message, true); }
+  };
   ov.querySelectorAll("[data-act]:not([data-act=copy])").forEach((b) => (b.onclick = () => busy(b, async () => {
     const act = b.dataset.act;
     if (act === "fav") { await patch({ favorite: !it.favorite }); b.classList.toggle("is-on", !!it.favorite); b.setAttribute("aria-pressed", String(!!it.favorite)); }
@@ -582,7 +596,7 @@ async function home() {
   $app.innerHTML = `<section class="home-hero">
       <div><p class="kicker">${hello}</p><h1 class="home-title">${esc(ME.name)}</h1>
         <form class="quick" id="quick"><textarea id="qp" rows="2" placeholder="What should Banime paint? Try “a fox spirit reading under paper lanterns”"></textarea>
-          <div class="row spread"><div class="chips">${STYLES.slice(0, 4).map(([k, n]) => `<button type="button" data-qs="${k}" class="${S.style === k ? "on" : ""}">${n}</button>`).join("")}<a class="small" href="#/create">More options →</a></div>
+          <div class="row spread"><div class="chips">${STYLES.slice(0, 4).map(([k, n]) => `<button type="button" data-qs="${k}" class="${S.style === k ? "on" : ""}">${n}</button>`).join("")}<a class="small" href="#/create">More options →</a> <a class="small" href="#/story">Make a story →</a></div>
           <button class="btn" type="submit">Generate · ${cost(`text:${S.model}`)}✦</button></div></form></div>
       <a class="balance" href="#/credits"><span class="small">Credits</span><b>${ME.credits}</b><span class="small">${ME.billingEnabled ? "Buy more →" : "History →"}</span></a>
     </section>
@@ -618,6 +632,7 @@ async function projectDetail(pid) {
     <div class="page-head"><div style="flex:1;min-width:260px"><input id="pname" class="title-input big" maxlength="60" value="${esc(p.name)}" aria-label="Project name"/>
       <textarea id="pdesc" class="desc-input" rows="2" maxlength="400" placeholder="Add a description" aria-label="Description">${esc(p.description || "")}</textarea></div>
       <div class="row"><button class="btn" id="pc">+ Frame in this project</button><a class="btn ghost" href="#/manga?new=1&project=${p.id}">+ Manga page</a><button class="btn danger small" id="pdel">Delete project</button></div></div>
+    ${p.story?.scenes?.length ? `<details class="card story-card"><summary><b>Story plan</b> <span class="small muted">${p.story.scenes.length} scenes${p.story.style ? " · " + esc((STYLES.find((x) => x[0] === p.story.style) || [, ""])[1]) : ""}</span></summary><ol>${p.story.scenes.map((x) => `<li><p>${esc(x.prompt)}</p>${x.caption ? `<p class="small muted">“${esc(x.caption)}”</p>` : ""}</li>`).join("")}</ol></details>` : ""}
     <h3>Frames and clips <span class="muted small">${items.length}</span></h3>
     <div class="results" id="results">${items.length ? items.map(tileHtml).join("") : '<div class="empty" style="grid-column:1/-1">No frames yet. Create one here, or open any frame in your Library and pick this project.</div>'}</div>
     <h3 style="margin-top:28px">Manga pages <span class="muted small">${pages.length}</span></h3>
@@ -690,17 +705,21 @@ async function settings() {
 // ------------------------------------------------------------------ admin
 async function admin() {
   if (!ME.isAdmin) { location.hash = "#/home"; return; }
-  const [o, { users }] = await Promise.all([api("GET", "/admin/overview"), api("GET", "/admin/users")]);
+  const [o, { users }, { reports }] = await Promise.all([api("GET", "/admin/overview"), api("GET", "/admin/users"), api("GET", "/admin/reports")]);
   const c = o.counts || {};
   const m = `${o.month.slice(0, 4)}-${o.month.slice(4)}`;
   $app.innerHTML = `<div class="page-head"><div><h2>Admin</h2><p class="muted small">Owner view · ${m} (UTC)</p></div></div>
     <div class="stats">${[["Users", o.users], ["Images", c.images || 0], ["Clips", c.clips || 0], ["Cutouts + upscales", (c.removebg || 0) + (c.upscale || 0)],
-      ["Clip spend", `$${o.videoSpendUsd.toFixed(2)} <small>/ $${o.videoCapUsd}</small>`], ["Sales", `${c.orders || 0} · ${money(c.revenueCents || 0)}`]].map(([k, v]) => `<div class="card stat"><span class="small muted">${k}</span><b>${v}</b></div>`).join("")}</div>
+      ["Story plans", c.storyPlans || 0], ["Clip spend", `$${o.videoSpendUsd.toFixed(2)} <small>/ $${o.videoCapUsd}</small>`], ["Sales", `${c.orders || 0} · ${money(c.revenueCents || 0)}`]].map(([k, v]) => `<div class="card stat"><span class="small muted">${k}</span><b>${v}</b></div>`).join("")}</div>
     <div class="row" style="margin:6px 0 18px"><span class="pill">Animation: ${o.animatePolicy === "all" ? "everyone" : "admins only"}</span><span class="pill">Payments: ${o.billingEnabled ? "on" : "off"}</span></div>
     <div class="grid two"><div class="card"><h3>Users</h3><div class="scroll"><table><tr><th>Email</th><th>Joined</th><th>Status</th><th>Credits</th><th></th></tr>
       ${users.map((u) => `<tr><td>${esc(u.email || u.userId)}</td><td class="small">${u.created ? new Date(u.created * 1000).toLocaleDateString() : ""}</td><td class="small">${esc(u.status || "")}</td><td class="mono">${u.credits ?? "–"}</td>
         <td><button class="btn ghost small" data-grant="${esc(u.userId)}" data-email="${esc(u.email || "")}">Grant</button></td></tr>`).join("")}</table></div></div>
-    <div class="card"><h3>Recent orders</h3>${o.orders.length ? `<table>${o.orders.map((x) => `<tr><td class="small">${new Date(x.created * 1000).toLocaleString()}</td><td>${esc(x.email || x.userId)}</td><td>${esc(x.pack)}</td><td class="mono">${money(x.amount || 0)}</td></tr>`).join("")}</table>` : '<p class="muted small">No orders yet.</p>'}</div></div>`;
+    <div class="grid" style="align-content:start"><div class="card"><h3>Reports <span class="small muted">${reports.length}</span></h3>${reports.length ? `<table>${reports.map((r) => `<tr><td class="small">${new Date(r.created * 1000).toLocaleDateString()}</td><td><a href="#/s/${esc(r.shareId)}" target="_blank" rel="noopener">${esc(r.shareId)}</a></td><td>${esc(r.reason)}</td><td><button class="btn danger small" data-hide="${esc(r.shareId)}">Hide</button></td></tr>`).join("")}</table>` : '<p class="muted small">No reports. Hiding a creation turns off its link and takes it off Explore.</p>'}</div>
+    <div class="card"><h3>Recent orders</h3>${o.orders.length ? `<table>${o.orders.map((x) => `<tr><td class="small">${new Date(x.created * 1000).toLocaleString()}</td><td>${esc(x.email || x.userId)}</td><td>${esc(x.pack)}</td><td class="mono">${money(x.amount || 0)}</td></tr>`).join("")}</table>` : '<p class="muted small">No orders yet.</p>'}</div></div></div>`;
+  $app.querySelectorAll("[data-hide]").forEach((b) => (b.onclick = () => busy(b, async () => {
+    if (!confirm("Hide this creation? Its public link stops working and it leaves Explore. The owner keeps it in their library.")) return;
+    await api("POST", `/admin/hide/${b.dataset.hide}`); toast("Hidden."); admin(); })));
   $app.querySelectorAll("[data-grant]").forEach((b) => (b.onclick = () => busy(b, async () => {
     const n = parseInt(prompt(`Credits to add for ${b.dataset.email} (use a minus sign to remove):`, "50"), 10); if (!n) return;
     await api("POST", "/admin/grant", { userId: b.dataset.grant, credits: n }); toast(`${n > 0 ? "Added" : "Removed"} ${Math.abs(n)} credits.`); admin();
@@ -723,7 +742,13 @@ async function sharePage(sid) {
     <figure class="share-media">${s.kind === "video" ? `<video src="${esc(s.url)}" poster="${esc(s.posterUrl || "")}" controls autoplay loop muted playsinline></video>` : `<img src="${esc(s.url)}" alt="${esc(s.title || s.prompt || "Anime art")}"/>`}</figure>
     <div class="share-copy"><p class="kicker">${sty ? sty[1] : "Anime"} · made with Banime</p><h1>${esc(s.title || "Untitled")}</h1><p class="muted">by ${esc(s.by)} · ${new Date(s.created * 1000).toLocaleDateString()}</p>
       ${s.prompt ? `<blockquote>${esc(s.prompt)}</blockquote>` : ""}<p class="small muted">AI-generated image.</p>
-      <div class="row" style="margin-top:20px">${auth.signedIn ? '<a class="btn big" href="#/create">Open your studio</a>' : '<a class="btn big" href="#auth" id="share-join">Make your own · 30 free credits</a>'}<button class="btn ghost big" id="share-copy">Copy link</button></div></div></div>`;
+      <div class="row" style="margin-top:20px">${s.prompt ? '<button class="btn big" id="share-remix">Try this prompt</button>' : ""}${auth.signedIn ? "" : '<a class="btn ghost big" href="#auth" id="share-join">Make your own · 30 free credits</a>'}<button class="btn ghost big" id="share-copy">Copy link</button></div>
+      ${auth.signedIn ? '<p class="small" style="margin-top:22px"><button class="linkish" id="share-report">Report this</button></p>' : ""}</div></div>`;
+  document.getElementById("share-remix")?.addEventListener("click", () => { Object.assign(S, { prompt: s.prompt, mode: "text", ...(s.style ? { style: s.style } : {}) }); if (auth.signedIn) location.hash = "#/create"; else auth.login("COGNITO"); });
+  document.getElementById("share-report")?.addEventListener("click", (e) => busy(e.currentTarget, async () => {
+    const reason = prompt("What's wrong with it? Type one: sexual, minor, real_person, hate, violence, spam, other", "other"); if (!reason) return;
+    await api("POST", "/report", { shareId: sid, reason: reason.trim().toLowerCase() }); toast("Thanks. The studio owner will review it.");
+  }));
   document.getElementById("share-copy").onclick = () => copyText(location.href);
   document.getElementById("share-join")?.addEventListener("click", (e) => { e.preventDefault(); auth.login("COGNITO"); });
 }
@@ -743,6 +768,9 @@ const FAQ = [
   ["Why was my prompt blocked?", "Banime blocks explicit content, anything that sexualizes minors, images of real people by name, and hate. See the content policy."],
   ["Why can't I animate yet?", "Clips are in early access while the studio owner watches costs. Everything else is open to every account."],
   ["How do I keep a character the same in every scene?", "Make the character once on the Characters page, then pick Character in Create. Banime uses its reference sheet so the face, hair and outfit stay on-model."],
+  ["What is Explore?", "A public feed of work people chose to post. Open any creation in your Library and turn on Show on Explore. It shows with your display name, and you can take it down at any time."],
+  ["How does Story work?", "Describe a short story. Banime plans the scenes with a line of dialogue each, paints them with your saved character, and lays them out as a manga page in a new project. Each scene costs the same as one frame."],
+  ["How do I know when a clip is done?", "Clips take 1 to 3 minutes. The bell at the top of the studio lights up when one finishes, even if you closed the tab. Turn on desktop alerts from the bell to get a pop-up too."],
   ["How do I delete my account?", "Settings → Delete account. It removes your sign-in and every file. You can download your data first from the same page."],
 ];
 function help() {
@@ -754,7 +782,7 @@ const LEGAL = {
     ["Who we are", "Banime is an AI anime studio run by Kyverin (\"we\"). By creating an account you agree to these terms."],
     ["Your account", "You need a valid email or Google account. You're responsible for activity on your account. You must be 13 or older, or the minimum age in your country."],
     ["Credits", "Credits are a prepaid balance for AI generations. They have no cash value, can't be transferred, and are not refundable except where the law requires. Failed generations are refunded in credits automatically."],
-    ["What you make", "You own what you create with Banime, to the extent the law allows for AI-assisted work. You give us permission to store and process it only to run the service for you. Public links show your work to anyone who has the link until you turn the link off."],
+    ["What you make", "You own what you create with Banime, to the extent the law allows for AI-assisted work. You give us permission to store and process it only to run the service for you. Public links show your work to anyone who has the link until you turn the link off. Work you post to Explore is visible to everyone, with your display name, until you take it down."],
     ["Acceptable use", "Follow the content policy. We can block prompts, remove content and suspend accounts that break it."],
     ["The service", "Banime is provided as is. AI results vary and can be wrong or unexpected. We may change features or prices with notice on the site."],
     ["Liability", "To the extent the law allows, our total liability to you is limited to the amount you paid us in the 12 months before the claim."],
@@ -780,13 +808,153 @@ function legal(which) {
     <p class="small muted" style="margin-top:28px"><a href="#/legal/terms">Terms</a> · <a href="#/legal/privacy">Privacy</a> · <a href="#/legal/content">Content policy</a></p></div>`;
 }
 
+
+// ------------------------------------------------------------------ notifications
+const NOTIF_TEXT = { clip_ready: "Your clip is ready", clip_failed: "A clip couldn't be made" };
+async function openBell() {
+  const pop = document.getElementById("bell-pop"); if (!pop) return;
+  if (!pop.hidden) { pop.hidden = true; return; }
+  pop.hidden = false; pop.innerHTML = '<p class="small muted" style="padding:10px 12px">Loading…</p>';
+  document.addEventListener("click", function off(e) { if (!pop.contains(e.target)) { pop.hidden = true; document.removeEventListener("click", off); } });
+  try {
+    const { notifications } = await api("GET", "/notifications");
+    const canAsk = "Notification" in window && Notification.permission === "default";
+    pop.innerHTML = `<div class="row spread" style="padding:8px 12px 4px"><b>Notifications</b>${canAsk ? '<button class="linkish small" id="np">Turn on desktop alerts</button>' : ""}</div>`
+      + (notifications.length ? notifications.map((n) => `<a href="#/library" data-item="${esc(n.itemId || "")}" class="notif ${n.read ? "" : "new"}"><b>${esc(NOTIF_TEXT[n.kind] || n.text)}</b><span class="small muted">${esc(n.title || "")}${n.title ? " · " : ""}${timeAgo(n.created)}</span></a>`).join("")
+        : '<p class="small muted" style="padding:6px 12px 12px">Nothing yet. You\'ll hear here when a clip finishes.</p>');
+    pop.querySelectorAll("[data-item]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); pop.hidden = true; if (a.dataset.item) openItem(a.dataset.item); }));
+    pop.querySelector("#np")?.addEventListener("click", async (e) => { e.stopPropagation(); await Notification.requestPermission(); openBell(); openBell(); });
+    if (notifications.some((n) => !n.read)) { await api("POST", "/notifications/read", {}); ME.unread = 0; const d = document.querySelector("#bell .dot"); d?.remove(); }
+  } catch (e) { pop.innerHTML = `<p class="small" style="padding:10px 12px">${esc(e.message)}</p>`; }
+}
+function timeAgo(t) { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t * 1000).toLocaleDateString(); }
+let NOTIF_TIMER = null;
+function startNotifPoll() {
+  if (NOTIF_TIMER || DEMO) return;
+  NOTIF_TIMER = setInterval(async () => {
+    if (!auth.signedIn || document.hidden || !ME) return;
+    try {
+      const { notifications, unread } = await api("GET", "/notifications");
+      if (unread > (ME.unread || 0)) {
+        const n = notifications.find((x) => !x.read);
+        toast(`${NOTIF_TEXT[n?.kind] || "New notification"}${n?.title ? ": " + n.title : ""}`);
+        if ("Notification" in window && Notification.permission === "granted" && n) new Notification("Banime", { body: NOTIF_TEXT[n.kind] || n.text });
+      }
+      if (unread !== ME.unread) { ME.unread = unread; renderNav(); }
+    } catch { /* offline: try again next tick */ }
+  }, 60000);
+}
+
+// ------------------------------------------------------------------ explore (public feed)
+const EXP = { items: [], cursor: null, style: "", loaded: false };
+async function explorePage() {
+  const base = CFG.apiUrl ? CFG.apiUrl.replace(/\/$/, "") : "";
+  const load = async (more) => {
+    if (DEMO || !base) { EXP.items = []; EXP.cursor = null; EXP.loaded = true; return; }
+    const r = await fetch(`${base}/public/explore${more && EXP.cursor ? `?cursor=${encodeURIComponent(EXP.cursor)}` : ""}`); const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Couldn't load Explore.");
+    EXP.items = more ? EXP.items.concat(d.items) : d.items; EXP.cursor = d.cursor; EXP.loaded = true;
+  };
+  await load(false);
+  const wrap = auth.signedIn ? "" : "public";
+  const draw = () => {
+    const list = EXP.items.filter((x) => !EXP.style || x.style === EXP.style);
+    $app.innerHTML = `<div class="${wrap}"><div class="page-head"><div><h2>Explore</h2><p class="muted small">Frames and clips people chose to share. Tap one to see its prompt and try it yourself.</p></div>
+      ${auth.signedIn ? '<a class="btn ghost" href="#/library">Post from your library</a>' : '<a class="btn" href="#auth" data-go="auth">Start free</a>'}</div>
+      <div class="chips" style="margin-bottom:16px"><button data-es="" class="${EXP.style ? "" : "on"}">All</button>${STYLES.map(([k, n]) => `<button data-es="${k}" class="${EXP.style === k ? "on" : ""}">${n}</button>`).join("")}</div>
+      ${list.length ? `<div class="masonry">${list.map((x) => `<a class="mcard" href="#/s/${x.shareId}">${x.kind === "video" ? `<video src="${esc(x.url)}" poster="${esc(x.posterUrl || "")}" muted loop playsinline preload="none"></video><span class="tag">clip</span>` : `<img src="${esc(x.url)}" alt="${esc(x.title || x.prompt || "Anime art")}" loading="lazy"/>`}
+        <div class="mmeta"><b>${esc(x.title || "Untitled")}</b><span>by ${esc(x.by)}</span></div></a>`).join("")}</div>`
+        : `<div class="empty">${DEMO ? "Explore shows real posts on the live site." : "Nothing posted here yet. Open a frame in your Library and turn on Show on Explore."}</div>`}
+      ${EXP.cursor ? '<div style="text-align:center;margin-top:20px"><button class="btn ghost" id="emore">Load more</button></div>' : ""}</div>`;
+    bindScrollLinks($app);
+    $app.querySelectorAll("[data-es]").forEach((b) => (b.onclick = () => { EXP.style = b.dataset.es; draw(); }));
+    $app.querySelectorAll(".mcard video").forEach((v) => { v.parentElement.onmouseenter = () => v.play().catch(() => {}); v.parentElement.onmouseleave = () => v.pause(); });
+    document.getElementById("emore")?.addEventListener("click", (e) => busy(e.currentTarget, async () => { await load(true); draw(); }));
+  };
+  draw();
+}
+
+// ------------------------------------------------------------------ story mode
+const ST = { step: 1, premise: "", characterId: "", style: "", count: 4, aspect: "", title: "", scenes: [] };
+async function story() {
+  const { characters } = await api("GET", "/characters");
+  if (!ST.style) ST.style = S.style; if (!ST.aspect) ST.aspect = S.aspect;
+  const each = ST.characterId ? cost("character") : cost(`text:${S.model}`);
+  const charOpts = characters.map((c) => `<option value="${c.id}" ${ST.characterId === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+  $app.innerHTML = `<div class="page-head"><div><h2>Story</h2><p class="muted small">Describe a short story. Banime plans the scenes, paints each one with the same character, and lays them out as a manga page.</p></div></div>
+    <ol class="steps"><li class="${ST.step === 1 ? "on" : "done"}">Idea</li><li class="${ST.step === 2 ? "on" : ST.step > 2 ? "done" : ""}">Scenes</li><li class="${ST.step === 3 ? "on" : ""}">Make it</li></ol>
+    <div id="stbody"></div>`;
+  const body = document.getElementById("stbody");
+  if (ST.step === 1) {
+    body.innerHTML = `<div class="grid two"><form class="card" id="st1">
+      <label style="margin-top:0">What happens?</label><textarea id="sp" rows="4" maxlength="1500" placeholder="A wind courier races a storm across the rooftops of a floating city to deliver a letter before sunset." required>${esc(ST.premise)}</textarea>
+      <label>Main character</label><select id="sc"><option value="">No saved character (looks may vary between scenes)</option>${charOpts}</select>
+      ${characters.length ? "" : '<p class="small muted">For the same face in every scene, <a href="#/characters">save a character</a> first.</p>'}
+      <div class="grid two" style="gap:12px"><div><label>Style</label><select id="ss">${STYLES.map(([k, n]) => `<option value="${k}" ${ST.style === k ? "selected" : ""}>${n}</option>`).join("")}</select></div>
+        <div><label>Scenes</label><select id="sn">${[2, 3, 4, 5, 6].map((n) => `<option ${ST.count === n ? "selected" : ""}>${n}</option>`).join("")}</select></div></div>
+      <label>Shape</label><select id="sa">${ASPECTS.map(([k, n]) => `<option value="${k}" ${ST.aspect === k ? "selected" : ""}>${n} (${k})</option>`).join("")}</select>
+      <button class="btn big gen" type="submit">Plan the scenes · free</button></form>
+      <div class="card story-tip"><h3>How it works</h3><ul class="ticks"><li>Amazon Nova splits your idea into scenes with a line of dialogue each.</li><li>You edit anything before painting.</li><li>Each scene costs ${each}✦, the same as a single frame.</li><li>Everything lands in a new project, with a manga page already laid out.</li></ul></div></div>`;
+    document.getElementById("st1").onsubmit = (e) => { e.preventDefault(); busy(e.submitter, async () => {
+      Object.assign(ST, { premise: document.getElementById("sp").value.trim(), characterId: document.getElementById("sc").value, style: document.getElementById("ss").value,
+        count: +document.getElementById("sn").value, aspect: document.getElementById("sa").value });
+      const r = await api("POST", "/stories/plan", { premise: ST.premise, characterId: ST.characterId || undefined, style: ST.style, count: ST.count });
+      Object.assign(ST, { title: r.title, scenes: r.scenes, step: 2 }); story();
+    }); };
+  } else if (ST.step === 2) {
+    const total = ST.scenes.length * each;
+    body.innerHTML = `<div class="card"><label style="margin-top:0">Title</label><input id="stt" maxlength="60" value="${esc(ST.title)}"/>
+      <div class="scenes">${ST.scenes.map((sc, i) => `<div class="scene"><span class="num">${i + 1}</span><div><label>Scene</label><textarea data-sp="${i}" rows="3" maxlength="600">${esc(sc.prompt)}</textarea>
+        <label>Speech bubble</label><input data-sc="${i}" maxlength="120" value="${esc(sc.caption)}"/></div>${ST.scenes.length > 2 ? `<button class="btn ghost small" data-rm="${i}" aria-label="Remove scene ${i + 1}">✕</button>` : ""}</div>`).join("")}</div>
+      <div class="row spread" style="margin-top:16px"><div class="row"><button class="btn ghost" id="sback">← Back</button>${ST.scenes.length < 6 ? '<button class="btn ghost" id="sadd">+ Scene</button>' : ""}<button class="btn ghost" id="sredo">Re-plan</button></div>
+        <button class="btn big" id="smake">Make the story · ${total}✦</button></div>
+      <p class="small muted" style="text-align:right;margin:8px 0 0">You have ${ME.credits}✦.</p></div>`;
+    const sync = () => { ST.title = document.getElementById("stt").value; body.querySelectorAll("[data-sp]").forEach((t) => (ST.scenes[+t.dataset.sp].prompt = t.value)); body.querySelectorAll("[data-sc]").forEach((t) => (ST.scenes[+t.dataset.sc].caption = t.value)); };
+    body.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => { sync(); ST.scenes.splice(+b.dataset.rm, 1); story(); }));
+    document.getElementById("sadd")?.addEventListener("click", () => { sync(); ST.scenes.push({ prompt: "", caption: "" }); story(); });
+    document.getElementById("sback").onclick = () => { sync(); ST.step = 1; story(); };
+    document.getElementById("sredo").onclick = () => { sync(); ST.step = 1; story(); setTimeout(() => document.querySelector("#st1 button[type=submit]")?.click(), 50); };
+    document.getElementById("smake").onclick = () => { sync();
+      if (ST.scenes.some((x) => !x.prompt.trim())) return toast("Every scene needs a description.", true);
+      if (ME.credits < total) return toast(`This needs ${total}✦ and you have ${ME.credits}✦.`, true);
+      ST.step = 3; story(); };
+  } else {
+    body.innerHTML = `<div class="card"><h3 style="margin-top:0">${esc(ST.title || "Your story")}</h3><div class="progress" id="sprog">${ST.scenes.map((sc, i) => `<div class="pstep" id="ps${i}"><div class="thumb"></div><div><b>Scene ${i + 1}</b><p class="small muted">${esc(sc.caption || sc.prompt.slice(0, 80))}</p></div><span class="state">Waiting</span></div>`).join("")}</div>
+      <p class="small muted" id="sstat">Creating the project…</p></div>`;
+    const stat = document.getElementById("sstat");
+    try {
+      const { project } = await api("POST", "/projects", { name: ST.title || "Untitled story", description: ST.premise, story: { premise: ST.premise, style: ST.style, characterId: ST.characterId || null, scenes: ST.scenes } });
+      PROJECTS = null; const made = [];
+      for (const [i, sc] of ST.scenes.entries()) {
+        const row = document.getElementById(`ps${i}`); row.querySelector(".state").innerHTML = '<span class="spinner"></span> Painting';
+        stat.textContent = `Painting scene ${i + 1} of ${ST.scenes.length}. Each takes about 10 seconds.`;
+        try {
+          const r = await api("POST", "/generate", { mode: ST.characterId ? "character" : "text", characterId: ST.characterId || undefined, prompt: sc.prompt,
+            style: ST.style, aspect: ST.aspect, model: S.model, projectId: project.id, title: `${ST.title} · ${i + 1}`.slice(0, 60) });
+          made.push({ itemId: r.item.id, text: sc.caption }); ME.credits = r.credits;
+          row.querySelector(".thumb").style.backgroundImage = `url('${r.item.url}')`; row.querySelector(".state").textContent = "Done"; row.classList.add("ok");
+        } catch (e) { made.push({ itemId: null, text: sc.caption }); row.querySelector(".state").textContent = e.message; row.classList.add("bad"); }
+        renderNav();
+      }
+      stat.textContent = "Laying out the manga page…";
+      const pages = []; for (let i = 0; i < made.length; i += 4) pages.push(made.slice(i, i + 4));
+      if (pages.length > 1 && pages[pages.length - 1].length === 1) pages[pages.length - 1].unshift(pages[pages.length - 2].pop());
+      for (const [i, panels] of pages.entries()) {
+        await api("POST", "/pages", { projectId: project.id, layout: panels.length === 3 ? "hero" : panels.length === 4 && ST.aspect === "16:9" ? "yonkoma" : "grid",
+          title: pages.length > 1 ? `${ST.title} (${i + 1}/${pages.length})` : ST.title, panels });
+      }
+      Object.assign(ST, { step: 1, premise: "", title: "", scenes: [] });
+      toast("Your story is ready."); location.hash = `#/projects/${project.id}`;
+    } catch (e) { stat.textContent = e.message; stat.style.color = "var(--red)"; }
+  }
+}
 // ------------------------------------------------------------------ router
-const PUBLIC = [["#/s/", (h) => sharePage(h.slice(4).split("?")[0])], ["#/pricing", pricing], ["#/help", help], ["#/legal/", (h) => legal(h.slice(8))]];
+const PUBLIC = [["#/s/", (h) => sharePage(h.slice(4).split("?")[0])], ["#/explore", explorePage], ["#/pricing", pricing], ["#/help", help], ["#/legal/", (h) => legal(h.slice(8))]];
 async function route() {
   const h = location.hash || "#/";
   scrollTo(0, 0);
   try {
-    const pub = PUBLIC.find(([p]) => h.startsWith(p));
+    const pub = PUBLIC.find(([p]) => h.startsWith(p) && !(auth.signedIn && p === "#/explore"));
     if (pub) {
       document.body.classList.remove("is-landing", "scrolled", "portal"); heroCleanup?.(); heroCleanup = null;
       if (auth.signedIn && !ME) await loadMe().catch(() => {});
@@ -797,12 +965,12 @@ async function route() {
       document.body.classList.remove("portal"); renderNav(); return landing();
     }
     document.body.classList.remove("is-landing", "scrolled"); document.body.classList.add("portal"); heroCleanup?.(); heroCleanup = null;
-    if (!ME) { await loadMe(); applyPrefs(); } else renderNav();
+    if (!ME) { await loadMe(); applyPrefs(); startNotifPoll(); } else renderNav();
     $app.innerHTML = '<p class="muted"><span class="spinner"></span> Loading…</p>';
     const pm = h.match(/^#\/projects\/(p[0-9a-f]{12})/);
     if (pm) return await projectDetail(pm[1]);
-    const table = { "#/home": home, "#/create": create, "#/characters": characters, "#/projects": projects, "#/manga": manga, "#/library": library, "#/gallery": library,
-      "#/credits": credits, "#/settings": settings, "#/account": settings, "#/admin": admin };
+    const table = { "#/home": home, "#/create": create, "#/characters": characters, "#/projects": projects, "#/story": story, "#/manga": manga, "#/library": library, "#/gallery": library,
+      "#/explore": explorePage, "#/credits": credits, "#/settings": settings, "#/account": settings, "#/admin": admin };
     const k = Object.keys(table).find((p) => h === p || h.startsWith(p + "?") || h.startsWith(p + "/"));
     if (k) return await table[k]();
     location.hash = "#/home";

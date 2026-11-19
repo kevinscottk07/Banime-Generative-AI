@@ -22,12 +22,14 @@ export async function demoApi(method, path, body = {}) {
   if (path === "/me" && method === "PATCH") { if (body.name) S.name = body.name; Object.assign(S.prefs, body.prefs || {}); return { profile: { name: S.name, prefs: S.prefs } }; }
   if (path === "/me" && method === "DELETE") { throw new Error("Demo accounts can't be deleted. Sign in to use this."); }
   if (path === "/me") return { userId: "demo", email: "demo@banime.app", name: S.name, prefs: S.prefs, isAdmin: false, canAnimate: true, credits: S.credits, costs: COST, creditUsd: 0.1, packs: PACKS, billingEnabled: false };
+  if (path === "/notifications") return { notifications: [], unread: 0 };
+  if (path === "/stories/plan") { const n = body.count || 4; return { title: "Wind Courier", scenes: Array.from({ length: n }, (_, i) => ({ prompt: `${body.premise} — scene ${i + 1}, ${["wide establishing shot", "medium shot, running", "close-up, determined face", "wide shot at sunset"][i % 4]}`, caption: ["Almost there!", "Hold on…", "Not today, storm.", "Delivered."][i % 4] })) }; }
   if (path === "/me/export") return { demo: true, items: S.items, characters: S.chars, projects: S.projects, pages: S.pages, ledger: S.ledger };
   if (path === "/billing/checkout") { const e = new Error("Payments open soon."); throw e; }
   const urlOf = (iid) => S.items.find((i) => i.id === iid)?.url || null;
   const pview = (g) => ({ ...g, panels: g.panels.map((p) => ({ ...p, url: urlOf(p.itemId) })) });
   if (path === "/projects" && method === "GET") return { projects: S.projects.map((p) => { const mine = S.items.filter((i) => i.projectId === p.id); return { ...p, itemCount: mine.length, pageCount: S.pages.filter((g) => g.projectId === p.id).length, coverUrl: mine.find((i) => i.kind === "image")?.url || null }; }) };
-  if (path === "/projects" && method === "POST") { if (!body.name?.trim()) throw new Error("Give the project a name."); const p = { id: "p" + Math.random().toString(16).slice(2, 14).padEnd(12, "0"), name: body.name.trim(), description: body.description || "", created: now() }; S.projects.unshift(p); return { project: p }; }
+  if (path === "/projects" && method === "POST") { if (!body.name?.trim()) throw new Error("Give the project a name."); const p = { id: "p" + Math.random().toString(16).slice(2, 14).padEnd(12, "0"), name: body.name.trim(), description: body.description || "", story: body.story, created: now() }; S.projects.unshift(p); return { project: p }; }
   if (path.startsWith("/projects/")) {
     const p = S.projects.find((x) => x.id === path.split("/")[2]); if (!p) throw new Error("Project not found.");
     if (method === "PATCH") { Object.assign(p, body); return { project: p }; }
@@ -50,7 +52,8 @@ export async function demoApi(method, path, body = {}) {
     const it = S.items.find((i) => i.id === path.split("/")[2]); if (!it) throw new Error("Not found.");
     if (method === "DELETE") { S.items = S.items.filter((i) => i !== it); return { deleted: it.id }; }
     if (method === "PATCH") { Object.assign(it, body); return { item: it }; }
-    if (path.endsWith("/share")) { it.shareId = body.on ? "s" + Math.random().toString(16).slice(2, 14) : null; return { item: it }; }
+    if (path.endsWith("/explore")) { if (body.on && !it.shareId) it.shareId = "s" + Math.random().toString(16).slice(2, 14); it.feedSk = body.on ? "demo" : null; return { item: it }; }
+    if (path.endsWith("/share")) { it.shareId = body.on ? "s" + Math.random().toString(16).slice(2, 14) : null; if (!body.on) it.feedSk = null; return { item: it }; }
     if (it.kind === "video" && it.status === "rendering" && Date.now() - it.t0 > 9000) { it.status = "failed"; it.error = "Demo mode doesn't render real video. Sign in to animate with Luma Ray2."; S.credits += 38; }
     return ok({ item: it });
   }

@@ -8,7 +8,7 @@ import re
 import time
 import traceback
 
-from . import ai, common, portal
+from . import ai, common, portal, social
 from .common import HttpError
 
 CREDIT_USD = 0.10
@@ -121,6 +121,7 @@ def me(who, _b, _p):
     return 200, {"userId": who["userId"], "email": who["email"], "name": prof.get("name") or who["name"],
                  "isAdmin": who["isAdmin"], "prefs": prof.get("prefs", {}), "created": prof.get("created"),
                  "packs": portal.PACKS, "billingEnabled": portal.billing_enabled(),
+                 "unread": social.unread_count(who["userId"]),
                  "credits": common.get_credits(who["userId"]), "canAnimate": can_animate(who),
                  "costs": COST, "creditUsd": CREDIT_USD,
                  "styles": {k: v[0] for k, v in ai.STYLES.items()}}
@@ -189,19 +190,30 @@ def gallery(who, _b, _p):
     return 200, {"items": [view(i) for i in items]}
 
 
+def settle_video(who, it: dict) -> bool:
+    """Check a rendering clip with Bedrock. On a final state: save it, refund a failure, tell the owner."""
+    if it["kind"] != "video" or it.get("status") != "rendering":
+        return False
+    st = ai.animation_status(it["arn"])
+    if st["status"] == "Completed" and st.get("key"):
+        it.update(status="ready", key=st["key"], finished=common.now())
+        social.notify(who["userId"], "clip_ready", it, "Your clip is ready.")
+    elif st["status"] == "Failed" or (st["status"] == "Completed" and not st.get("key")):
+        it.update(status="failed", error=(st.get("error") or "animation failed")[:300], finished=common.now())
+        if not it.get("refunded"):
+            refund(who, it.get("credits", 0), "animate", it["id"])
+            it["refunded"] = True
+        social.notify(who["userId"], "clip_failed", it, "Your clip couldn't be made. The credits are back in your balance.")
+    else:
+        return False
+    common.put_item(*item_key(who, it["id"]), it)
+    common.delete_item("CONFIG", f"PENDING#{it['id']}")
+    return True
+
+
 def get_item(who, _b, p):
     it = load_item(who, p["id"])
-    if it["kind"] == "video" and it.get("status") == "rendering":
-        st = ai.animation_status(it["arn"])
-        if st["status"] == "Completed" and st.get("key"):
-            it.update(status="ready", key=st["key"], finished=common.now())
-            common.put_item(*item_key(who, it["id"]), it)
-        elif st["status"] == "Failed" or (st["status"] == "Completed" and not st.get("key")):
-            it.update(status="failed", error=(st.get("error") or "animation failed")[:300], finished=common.now())
-            if not it.get("refunded"):
-                refund(who, it.get("credits", 0), "animate", it["id"])
-                it["refunded"] = True
-            common.put_item(*item_key(who, it["id"]), it)
+    settle_video(who, it)
     return 200, {"item": view(it), "credits": common.get_credits(who["userId"])}
 
 
@@ -272,6 +284,7 @@ def animate(who, body, _p):
           "prompt": motion, "aspect": src.get("aspect"), "title": src.get("title", ""), "created": common.now(),
           "credits": cost, "projectId": src.get("projectId")}
     common.put_item(*item_key(who, iid), it)
+    social.watch_clip(who["userId"], iid)
     common.bump("clips")
     return 202, {"item": view(it), "credits": common.get_credits(who["userId"])}
 
@@ -355,7 +368,7 @@ ROUTES = [
     ("POST", r"/characters", create_char, True),
     ("DELETE", r"/characters/(?P<id>[^/]+)", delete_char, True),
     ("POST", r"/admin/grant", admin_grant, True),
-] + portal.ROUTES
+] + portal.ROUTES + social.ROUTES
 
 
 def route(method, path):
@@ -371,6 +384,8 @@ def handler(event, _ctx=None):
         if event.get("action") == "publish_site":
             from . import publish
             return publish.publish_site(event["payload"])
+        if event.get("action") == "sweep" or event.get("source") == "aws.events":
+            return social.sweep(settle_video)
         method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
         path = event.get("rawPath", "/").rstrip("/") or "/"
         if method == "POST" and path == "/public/stripe-webhook":
@@ -379,6 +394,7 @@ def handler(event, _ctx=None):
                 raw = base64.b64decode(raw).decode()
             return common.response(*portal.stripe_webhook(raw, (event.get("headers") or {}).get("stripe-signature", "")))
         fn, params, auth = route(method, path)
+        params["qs"] = event.get("queryStringParameters") or {}
         who = identity(event) if auth else None
         if who:
             ensure_profile(who)
